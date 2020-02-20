@@ -49,7 +49,7 @@
   ((menu-name :reader command-menu-item-name :initarg :menu-name)
    (type :initarg :type :reader command-menu-item-type)
    (value :initarg :value :reader command-menu-item-value)
-   (documentation :initarg :documentation)
+   (documentation :initarg :documentation :initform nil)
    (text-style :initarg :text-style :initform nil)
    (keystroke :initarg :keystroke)))
 
@@ -1300,14 +1300,36 @@ examine the type of the command menu item to see if it is
 (define-presentation-method accept ((type command) stream
 				    (view textual-view)
 				    &key)
-  (let ((command (funcall *command-parser* command-table stream)))
-    (cond ((null command)
-	   (simple-parse-error "Empty command"))
-          ((partial-command-p command)
-           (funcall *partial-command-parser*
-            command-table stream command
-            (position *unsupplied-argument-marker* command)))
-	  (t (values command type)))))
+  (setq command-table (find-command-table command-table))
+  (let ((start-position (and (input-editing-stream-p stream)
+                             (stream-scan-pointer stream)))
+        (replace-input-p nil))
+    (multiple-value-bind (object new-type)
+        ;; We establish a new input context so that clicks on command-menu-items
+        ;; throw to us. This will let's us handle "partial commands" below.
+        ;; This only works for partial commands coming by clicking on
+        ;; application-frame menus.  Clicking on a presentation of something as a
+        ;; command with unsupplied arguments with instead by caught by accept-1
+        ;; and bypass this handling.
+        (with-input-context ('command :override nil)
+	    (object presentation-type event options)
+            (funcall *command-parser* command-table stream)
+	  (t (when (getf options :echo t)
+	       (setq replace-input-p t))
+	     (values object presentation-type)))
+      (declare (ignore new-type))
+      (cond ((partial-command-p object)
+             (values (funcall *partial-command-parser*
+                              command-table stream object start-position)
+                     type))
+            (t (when replace-input-p
+                  (presentation-replace-input stream object type view
+                                              :buffer-start start-position
+                                              ;;; This is important in case the clicked
+                                              ;;; on thing returned something unparseable
+                                              :rescan nil
+                                              ))
+               (values object type))))))
 
 ;;; A presentation type for empty input at the command line; something for
 ;;; read-command to supply as a default.  The command is defined in
