@@ -454,15 +454,34 @@
        (call-next-method)
     (setf *all-ports* (remove port *all-ports*))))
 
-(defgeneric make-graft (port &key orientation units))
+;;; Graft
 
 (defmethod make-graft
     ((port basic-port) &key (orientation :default) (units :device))
-  (let ((graft (make-instance 'graft
-		 :port port :mirror nil
-		 :orientation orientation :units units)))
+  (make-instance 'graft :port port :mirror nil
+                        :orientation orientation :units units))
+
+(defmethod make-graft :around ((port basic-port) &key orientation units)
+  (declare (ignore orientation units))
+  (let ((graft (call-next-method)))
     (push graft (port-grafts port))
     graft))
+
+(defmethod map-over-grafts (function (port basic-port))
+  (mapc function (port-grafts port)))
+
+(defun find-graft (&key (port nil)
+		     (server-path *default-server-path*)
+		     (orientation :default)
+		     (units :device))
+  (when (null port)
+    (setq port (find-port :server-path server-path)))
+  (map-over-grafts #'(lambda (graft)
+		       (if (and (eq orientation (graft-orientation graft))
+				(eq units (graft-units graft)))
+			   (return-from find-graft graft)))
+		   port)
+  (make-graft port :orientation orientation :units units))
 
 ;;; Pixmap
 

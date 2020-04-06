@@ -98,8 +98,6 @@
 (setf (get :clx :port-type) 'clx-port)
 (setf (get :clx :server-path-parser) 'parse-clx-server-path)
 
-(defgeneric initialize-clx (port))
-
 (defmethod initialize-instance :after ((port clx-port) &key)
   (let ((options (cdr (port-server-path port))))
     (push (apply #'make-instance 'clx-frame-manager :port port options)
@@ -137,7 +135,7 @@
     (let* ((desired-color (typecase sheet
                             (permanent-medium-sheet-output-mixin ;; sheet-with-medium-mixin
                               (medium-background sheet))
-                            (basic-pane ; CHECKME [is this sensible?] seems to be
+                            (pane ; CHECKME [is this sensible?] seems to be
                               (let ((background (pane-background sheet)))
                                 (if (typep background 'color)
                                     background
@@ -228,9 +226,8 @@
 		 :orientation orientation :units units))
         (width (xlib:screen-width (clx-port-screen port)))
         (height (xlib:screen-height (clx-port-screen port))))
-    (climi::%%set-sheet-region (make-bounding-rectangle 0 0 width height)
-                               graft)
-    (push graft (port-grafts port))
+    (let ((region (make-bounding-rectangle 0 0 width height)))
+      (climi::%%set-sheet-region region graft))
     graft))
 
 (defmethod make-medium ((port clx-port) sheet)
