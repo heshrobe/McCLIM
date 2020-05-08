@@ -129,7 +129,9 @@
 (defgeneric invoke-with-filling-output (stream continuation fresh-line-fn
                                         &key fill-width break-characters)
   (:method ((stream filling-output-mixin) continuation fresh-line-fn
-            &key (fill-width '(80 :character)) break-characters)
+            &key
+              (fill-width (bounding-rectangle-max-x (stream-page-region stream)))
+              break-characters)
     (with-temporary-margins (stream :right `(:absolute ,fill-width))
       (letf (((stream-end-of-line-action stream) :wrap*)
              ((line-break-strategy stream) break-characters)
@@ -179,10 +181,10 @@
                             (etypecase ,after-line-break
                               (string   (write-string ,after-line-break ,stream))
                               (function (funcall ,after-line-break ,stream soft-newline-p))))))
-                      ;; When after-line-break goes beyond the previous
-                      ;; position we advance the cursor.
-                      (maxf cx (stream-cursor-position ,stream))
-                      (setf (stream-cursor-position ,stream) (values cx cy)))))
+                      ;; When after-line-break goes beyond the
+                      ;; previous position we advance the cursor.
+                      (multiple-value-bind (nx ny) (stream-cursor-position ,stream)
+                        (stream-set-cursor-position ,stream (max cx nx) (max cy ny))))))
              (declare (dynamic-extent #',continuation #',fresh-line-fn))
              (invoke-with-filling-output ,stream #',continuation #',fresh-line-fn ,@args)))))))
 
