@@ -404,28 +404,28 @@ account, and create a list of menu buttons."
     ((object event)
      (declare (ignore event))
      (let* ((menu-item (command-menu-item-value object))
-	    (command-name (first menu-item))
-	    (type (command-menu-item-type object)))
+            (command-name (first menu-item))
+            (type (command-menu-item-type object)))
        (and (or (eq type ':command)
-		(eq type ':function))
-	    (command-enabled
-	     command-name
-	     *application-frame*))))
+                (eq type ':function))
+            (command-enabled
+             command-name
+             *application-frame*))))
       :tester-definitive t
       ;; The pointer-documentation uses this, too
       :documentation
       ((object presentation context-type frame event window x y stream)
        (declare (ignore presentation frame x y event window))
        (let ((documentation (getf (command-menu-item-options object) :documentation)))
-	 (if documentation
-	     (write-string documentation stream)
-	     (let ((command-name (first (command-menu-item-value object))))
-	       (with-presentation-type-parameters (command context-type)
-		 (present (list command-name) `command :stream stream)))))))
+         (if documentation
+             (write-string documentation stream)
+             (let ((command-name (first (command-menu-item-value object))))
+               (with-presentation-type-parameters (command context-type)
+                 (present (list command-name) `command :stream stream)))))))
     (object)
   (values (command-menu-item-value object)
-	  `(command :command-table ,(frame-command-table *application-frame*))
-  	  ))
+          `(command :command-table ,(frame-command-table *application-frame*))
+          ))
 
 
 (defmethod display-command-table-menu ((command-table standard-command-table)
