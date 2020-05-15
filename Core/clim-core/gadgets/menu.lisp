@@ -424,9 +424,7 @@ account, and create a list of menu buttons."
                  (present (list command-name) `command :stream stream)))))))
     (object)
   (values (command-menu-item-value object)
-          `(command :command-table ,(frame-command-table *application-frame*))
-          ))
-
+          `(command :command-table ,(frame-command-table *application-frame*))))
 
 (defmethod display-command-table-menu ((command-table standard-command-table)
                                        (stream fundamental-output-stream)
@@ -456,7 +454,6 @@ account, and create a list of menu buttons."
                     (with-output-as-presentation (stream item 'command-menu-item)
                       (write-string name stream)))))))
      command-table)))
-
 
 (defmethod display-command-menu (frame (stream fundamental-output-stream)
                                  &rest args &key

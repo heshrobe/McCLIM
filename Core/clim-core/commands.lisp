@@ -1318,18 +1318,17 @@ examine the type of the command menu item to see if it is
                (setq replace-input-p t))
              (values object presentation-type)))
       (declare (ignore new-type))
-      (cond ((partial-command-p object)
-             (values (funcall *partial-command-parser*
-                              command-table stream object start-position)
-                     type))
-            (t (when replace-input-p
-                  (presentation-replace-input stream object type view
-                                              :buffer-start start-position
-                                              ;;; This is important in case the clicked
-                                              ;;; on thing returned something unparseable
-                                              :rescan nil
-                                              ))
-               (values object type))))))
+      (if (partial-command-p object)
+          (values (funcall *partial-command-parser*
+                           command-table stream object start-position)
+                  type)
+          (progn (when replace-input-p
+                   (presentation-replace-input stream object type view
+                                               :buffer-start start-position
+                                               ;; This is important in case the clicked
+                                               ;; on thing returned something unparseable
+                                               :rescan nil))
+                 (values object type))))))
 
 ;;; A presentation type for empty input at the command line; something for
 ;;; read-command to supply as a default.  The command is defined in
