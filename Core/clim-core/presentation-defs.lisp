@@ -1834,6 +1834,31 @@ protocol retrieving gestures from a provided string."))
                                    super-sequence super-test super-value-key)
                 t)))))
 
+
+(define-presentation-method describe-presentation-type ((type completion) stream plural-count)
+  (when (= (length sequence) 1)
+    (return-from describe-presentation-type
+      (default-describe-presentation-type (funcall name-key (elt sequence 0))
+                                          stream
+                                          (unless (eq plural-count 1)        ;suppress a/an
+                                            plural-count))))
+  (etypecase plural-count
+    ((member nil 1)
+     (write-string "one of " stream))
+    ((member t)
+     (write-string "one or more of " stream))
+    ((integer 2 *)
+     (format stream "~R of " plural-count)))
+  (let ((position 0)
+        (last (1- (length sequence))))
+    (map nil #'(lambda (item)
+                 (funcall printer (funcall name-key item) stream)
+                 (unless (= position last)
+                   (write-string (if (= last 1) " " ", ") stream)
+                   (when (= (incf position) last)
+                     (write-string "or " stream))))
+         sequence)))
+
 (define-presentation-method present (object (type completion) stream
                                      (view textual-view)
                                      &key acceptably for-context-type)
@@ -2223,6 +2248,15 @@ protocol retrieving gestures from a provided string."))
              (return-from presentation-typep t)))
   nil)
 
+(define-presentation-method describe-presentation-type ((type or) stream plural-count)
+  (let ((length (length types)))
+    (dotimes (i length)
+      (describe-presentation-type (elt types i) stream plural-count)
+      (cond ((= i (1- length)))
+            ((= length 2) (write-string " or " stream))
+            ((= i (- length 2)) (write-string ", or " stream))
+            (t (write-string ", " stream))))))
+
 (define-presentation-method present (object (type or)
                                      stream
                                      (view textual-view)
@@ -2246,12 +2280,12 @@ protocol retrieving gestures from a provided string."))
 	(loop for or-type in types
 	   do
 	     (handler-case
-		 (progn
-		   (return (accept-from-string or-type
-					       str
-					       :view view)))
+		 (multiple-value-bind (sub-type-object sub-type-type)
+                     (accept-from-string or-type str :view view)
+                   (presentation-replace-input stream sub-type-object sub-type-type view :rescan nil)
+		   (return (values  sub-type-object sub-type-type)))
 	       (parse-error ()))
-	   finally (simple-parse-error "Input type is not one of ~S" types)))
+	   finally (simple-parse-error "input type is not one of ~s" types)))
     (t
      (presentation-replace-input stream object type-var view :rescan nil)
      (return-from accept (values object type-var)))))
