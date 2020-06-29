@@ -998,52 +998,53 @@ examine the type of the command menu item to see if it is
               collect arg into required
               finally (return (values required (cdr arg-tail))))
       (let* ((command-func-args
-              `(,@(mapcar #'car required-args)
-                ,@(and
-                   keyword-args
-                   `(&key ,@(mapcar #'(lambda (arg-clause)
-                                        (destructuring-bind (arg-name ptype
-                                                             &key default
-                                                             &allow-other-keys)
-                                            arg-clause
-                                          (declare (ignore ptype))
-                                          `(,arg-name ,default)))
-                                    keyword-args)))))
-             (accept-fun-name (gentemp (format nil "~A%ACCEPTOR%"
-                                               (symbol-name func))
-                                       (symbol-package func)))
-             (partial-parser-fun-name (gentemp (format nil "~A%PARTIAL%"
-                                                       (symbol-name func))
-                                               (symbol-package func)))
-             (arg-unparser-fun-name (gentemp (format nil "~A%unparser%"
-                                                     (symbol-name func))
-                                             (symbol-package func))))
-        `(progn
-          (defun ,func ,command-func-args
-            ,@body)
-          ,(when command-table
-                 `(add-command-to-command-table ',func ',command-table
-                 :name ,name :menu ',menu
-                 :keystroke ',keystroke :errorp nil
-                 ,@(and menu
-                        `(:menu-command
-                          (list ',func
-                                ,@(make-list (length required-args)
-                                             :initial-element
-                                             '*unsupplied-argument-marker*))))))
-          ,(make-argument-accept-fun accept-fun-name
-                                     required-args
-                                     keyword-args)
-          ,(make-partial-parser-fun partial-parser-fun-name required-args)
-          ,(make-unprocessor-fun arg-unparser-fun-name
-                                 required-args
-                                 keyword-args)
-          ,(and command-table
-                (make-command-translators func command-table required-args))
-          (setf (gethash ',func *command-parser-table*)
-                (make-instance 'command-parsers
-                               :parser #',accept-fun-name
-                               :partial-parser #',partial-parser-fun-name
+	      `(,@(mapcar #'car required-args)
+		,@(and
+		   keyword-args
+		   `(&key ,@(mapcar #'(lambda (arg-clause)
+					(destructuring-bind (arg-name ptype
+							     &key default
+							     &allow-other-keys)
+					    arg-clause
+					  (declare (ignore ptype))
+					  `(,arg-name ,default)))
+				    keyword-args)))))
+	     (accept-fun-name (gentemp (format nil "~A%ACCEPTOR%"
+					       (symbol-name func))
+				       (symbol-package func)))
+	     (partial-parser-fun-name (gentemp (format nil "~A%PARTIAL%"
+						       (symbol-name func))
+					       (symbol-package func)))
+	     (arg-unparser-fun-name (gentemp (format nil "~A%unparser%"
+						     (symbol-name func))
+					     (symbol-package func))))
+	`(progn
+	  (defun ,func ,command-func-args
+	    ,@body)
+	  ,(when command-table
+             `(add-command-to-command-table
+               ',func ',command-table
+               :name ,name :menu ',menu
+               :keystroke ',keystroke :errorp nil
+               ,@(and menu
+                      `(:menu-command
+                        (list ',func
+                              ,@(make-list (length required-args)
+                                           :initial-element
+                                           '*unsupplied-argument-marker*))))))
+	  ,(make-argument-accept-fun accept-fun-name
+				     required-args
+				     keyword-args)
+	  ,(make-partial-parser-fun partial-parser-fun-name required-args)
+	  ,(make-unprocessor-fun arg-unparser-fun-name
+				 required-args
+				 keyword-args)
+	  ,(and command-table
+		(make-command-translators func command-table required-args))
+	  (setf (gethash ',func *command-parser-table*)
+	        (make-instance 'command-parsers
+		               :parser #',accept-fun-name
+		               :partial-parser #',partial-parser-fun-name
                                :required-args ',required-args
                                :keyword-args  ',keyword-args
                                :argument-unparser #',arg-unparser-fun-name))

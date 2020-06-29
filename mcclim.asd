@@ -89,7 +89,8 @@ interface management system."
 
 (defsystem "mcclim/test"
   :depends-on ("mcclim"
-               "fiveam")
+               "fiveam"
+               "mcclim/test-util")
   :components ((:module "Tests"
                 :serial t
                 :components ((:file "package")
@@ -97,6 +98,7 @@ interface management system."
                              (:file "input-editing")
                              (:file "commands")
                              (:file "presentations")
+                             (:file "presentation-translators")
                              (:file "text-selection")
                              (:file "text-formatting")
                              (:file "text-styles")
@@ -115,7 +117,8 @@ interface management system."
              (uiop:symbol-call '#:clim-tests '#:run-tests)))
 
 (defsystem "mcclim/test-util"
-  :depends-on ("mcclim")
+  :depends-on ("mcclim"
+               "fiveam")
   :components ((:module "Tests/util"
                 :serial t
                 :components ((:file "package")

@@ -674,7 +674,8 @@ history will be unchanged."
       (presentation-history-insert history object ptype))))
 
 (define-presentation-generic-function %accept accept
-    (type-key parameters options type stream view &key))
+    (type-key parameters options type stream view
+     &key default default-type &allow-other-keys))
 
 (defvar *recursive-accept-p* nil)
 (defvar *recursive-accept-1-p* nil)
@@ -834,7 +835,7 @@ history will be unchanged."
   (unless (or activationsp additional-activations-p *activation-gestures*)
     (setq activation-gestures *standard-activation-gestures*))
   (let ((sensitizer-object nil)
-        (sensitizer-type nil))
+        (sensitizer-type 'null))
     (with-input-editing
         (stream
          :input-sensitizer #'(lambda (stream cont)
