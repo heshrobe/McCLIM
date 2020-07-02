@@ -1001,6 +1001,15 @@
              (return-from presentation-typep t)))
   nil)
 
+(define-presentation-method describe-presentation-type ((type or) stream plural-count)
+  (let ((length (length types)))
+    (dotimes (i length)
+      (describe-presentation-type (elt types i) stream plural-count)
+      (cond ((= i (1- length)))
+            ((= length 2) (write-string " or " stream))
+            ((= i (- length 2)) (write-string ", or " stream))
+            (t (write-string ", " stream))))))
+
 (define-presentation-method present (object (type or)
                                      stream
                                      (view textual-view)
@@ -1024,15 +1033,16 @@
 	(loop for or-type in types
 	   do
 	     (handler-case
-		 (progn
-		   (return (accept-from-string or-type
-					       str
-					       :view view)))
+		 (multiple-value-bind (sub-type-object sub-type-type)
+                     (accept-from-string or-type str :view view)
+                   (presentation-replace-input stream sub-type-object sub-type-type view :rescan nil)
+		   (return (values  sub-type-object sub-type-type)))
 	       (parse-error ()))
-	   finally (simple-parse-error "Input type is not one of ~S" types)))
+	   finally (simple-parse-error "input type is not one of ~s" types)))
     (t
      (presentation-replace-input stream object type-var view :rescan nil)
      (return-from accept (values object type-var)))))
+
 
 ;;; What does and inherit from?  Maybe we'll punt on that for the moment.
 ;;; Unless it inherits from its arguments...
