@@ -439,11 +439,11 @@
       (values search-pathname (pathname-type actual-pathname) original-pathname))))
 
 (defun filename-completer-get-candidates (search-pathname pathname-type original-pathname)
+  (declare (ignore pathname-type))
   (let ((orginal-is-logical-pathname (typep original-pathname 'logical-pathname))
         (completions (directory search-pathname #+sbcl :resolve-symlinks #+sbcl nil)))
     ;; Now prune out all completions that don't start with the string
-    (when (null pathname-type)
-      (flet ((legitimate-logical-pathname (name)
+    (flet ((legitimate-logical-pathname (name)
                (let ((word (string name)))
                  (loop for i below (length word)
                        for ch = (schar word i)
@@ -485,7 +485,7 @@
                                                 :name pathname-name
                                                 :type pathname-type)
                                  new-completions)))))
-          (nreverse new-completions))))))
+          (nreverse new-completions)))))
 
 
 (defun filename-completer (string action)
