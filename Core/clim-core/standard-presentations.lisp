@@ -1023,25 +1023,28 @@
                       :for-context-type for-context-type)
              (loop-finish))))
 
-(define-presentation-method accept ((type or)
-                                    (stream input-editing-stream)
-                                    (view textual-view)
-                                    &key)
-  (with-input-context (type)
-      (object type-var)
-      (let ((str (read-token stream)))
-	(loop for or-type in types
-	   do
-	     (handler-case
-		 (multiple-value-bind (sub-type-object sub-type-type)
-                     (accept-from-string or-type str :view view)
-                   (presentation-replace-input stream sub-type-object sub-type-type view :rescan nil)
-		   (return (values  sub-type-object sub-type-type)))
-	       (parse-error ()))
-	   finally (simple-parse-error "input type is not one of ~s" types)))
-    (t
-     (presentation-replace-input stream object type-var view :rescan nil)
-     (return-from accept (values object type-var)))))
+(define-presentation-method accept ((type or) stream view
+                                    &key )
+  (let* ((location (stream-scan-pointer stream))
+         last-error)
+    (dolist (type types)
+      (block fail
+        (handler-bind ((parse-error
+                         #'(lambda (anerror)
+                             ;; That parser didn't work, try another on the same input
+                             (setq last-error anerror)
+                             (setf (stream-scan-pointer stream) location)
+                             (return-from fail))))
+          (multiple-value-bind (object object-type)
+              (funcall-presentation-generic-function accept
+                                                     type stream view)
+            (presentation-replace-input stream object object-type view :rescan nil)
+            (return-from accept
+              (values object (or object-type type)))))))
+    ;; No parser worked.  Resignal the most recent parse-error.
+    (simple-parse-error "~A" last-error)))
+
+
 
 
 ;;; What does and inherit from?  Maybe we'll punt on that for the moment.
