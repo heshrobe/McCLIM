@@ -1120,19 +1120,20 @@ were added."
         (sequence= my-coord-seq coord-seq #'coordinate=))))
 
 (defmacro generate-medium-recording-body (class-name args)
-  (let ((arg-list (loop for arg in args
-                     nconc `(,(intern (symbol-name arg) :keyword) ,arg))))
+  (let ((arg-list (alexandria:mappend
+                   (lambda (arg)
+                     (destructuring-bind (name &optional (recording-form nil formp)
+                                                         (storep t))
+                         (alexandria:ensure-list arg)
+                       (when storep
+                         `(,(alexandria:make-keyword name)
+                           ,(if formp
+                                recording-form
+                                name)))))
+                   args)))
     `(progn
        (when (stream-recording-p stream)
-         (let ((record
-                ;; initialize the output record with a copy of coord-seq, as the
-                ;; replaying code will modify it to be positioned relative to
-                ;; the output-record's position and making a temporary is
-                ;; (arguably) less bad than untrasnforming the coords back to
-                ;; how they were.
-                (let (,@(when (member 'coord-seq args)
-                          `((coord-seq (copy-seq coord-seq)))))
-                  (make-instance ',class-name :stream stream ,@arg-list))))
+         (let ((record (make-instance ',class-name :stream stream ,@arg-list)))
            (stream-add-output-record stream record)))
        (when (stream-drawing-p stream)
          (call-next-method)))))
@@ -1149,43 +1150,64 @@ were added."
 ;;; stream history. It also defines a REPLAY-OUTPUT-RECORD method,
 ;;; which calls the medium drawing function based on the recorded
 ;;; slots.
+;;;
+;;; The macro lambda list of DEF-GRECORDING is loosely based on that
+;;; of DEFCLASS with a few differences:
+;;; * The name can either be just a symbol or a list of a symbol
+;;;   followed by keyword arguments which control what aspects should
+;;;   be generated: class, medium-fn and replay-fn.
+;;; * Instead of slot specifications, a list of argument descriptions
+;;;   is supplied which is used to defined slots as well as arguments.
+;;;   An argument is either a symbol or a list of the form
+;;;   (NAME INITFORM STOREP) where INITFORM computes the value to
+;;;   store in the output record and STOREP controls whether a slot
+;;;   for the argument should be present in the output record at all.
+;;; * DEFCLASS options are not accepted, but a body is, as described
+;;;   above.
+(defmacro def-grecording (name-and-options (&rest mixins) (&rest args)
+                          &body body)
+  (destructuring-bind (name &key (class t) (medium-fn t) (replay-fn t))
+      (alexandria:ensure-list name-and-options)
+    (let* ((method-name (symbol-concat '#:medium- name '*))
+           (class-name (symbol-concat name '#:-output-record))
+           (medium (gensym "MEDIUM"))
+           (arg-names (mapcar #'alexandria:ensure-car args))
+           (slot-names (alexandria:mappend
+                        (lambda (arg)
+                          (destructuring-bind (name &optional form (storep t))
+                              (alexandria:ensure-list arg)
+                            (declare (ignore form))
+                            (when storep `(,name))))
+                        args))
+           (slots `((stream :initarg :stream)
+                    ,@(loop for slot-name in slot-names
+                            for initarg = (alexandria:make-keyword slot-name)
+                            collect `(,slot-name :initarg ,initarg)))))
+      `(progn
+         ,@(when class
+             `((defclass ,class-name (,@mixins standard-graphics-displayed-output-record)
+                 ,slots)
+               (defmethod initialize-instance :after ((graphic ,class-name) &key)
+                 (with-slots (stream ink clipping-region line-style text-style ,@slot-names)
+                     graphic
+                   (let ((medium (sheet-medium stream)))
+                     (setf (rectangle-edges* graphic) (progn ,@body)))))))
+         ,@(when medium-fn
+             `((defmethod ,method-name :around ((stream output-recording-stream) ,@arg-names)
+                 ;; XXX STANDARD-OUTPUT-RECORDING-STREAM ^?
+                 (generate-medium-recording-body ,class-name ,args))))
+         ,@(when replay-fn
+             `((defmethod replay-output-record ((record ,class-name) stream
+                                                &optional (region +everywhere+)
+                                                          (x-offset 0) (y-offset 0))
+                 (declare (ignore x-offset y-offset region))
+                 (with-slots (,@slot-names) record
+                   (let ((,medium (sheet-medium stream)))
+                     ;; Graphics state is set up in :around method.
+                     (,method-name ,medium ,@arg-names))))))))))
 
-(defmacro def-grecording (name ((&rest mixins) &rest args)
-                               (&key (class t)
-                                     (medium-fn t)
-                                     (replay-fn t)) &body body)
-  (let ((method-name (symbol-concat '#:medium- name '*))
-        (class-name (symbol-concat name '#:-output-record))
-        (medium (gensym "MEDIUM"))
-        (class-vars `((stream :initarg :stream)
-                      ,@(loop for arg in args
-                           collect `(,arg
-                                     :initarg ,(intern (symbol-name arg)
-                                                       :keyword))))))
-    `(progn
-       ,@(when class
-           `((defclass ,class-name (,@mixins standard-graphics-displayed-output-record)
-               ,class-vars)
-             (defmethod initialize-instance :after ((graphic ,class-name) &key)
-               (with-slots (stream ink clipping-region line-style text-style ,@args)
-                   graphic
-                 (let ((medium (sheet-medium stream)))
-                   (setf (rectangle-edges* graphic) (progn ,@body)))))))
-       ,@(when medium-fn
-           `((defmethod ,method-name :around ((stream output-recording-stream) ,@args)
-                        ;; XXX STANDARD-OUTPUT-RECORDING-STREAM ^?
-                        (generate-medium-recording-body ,class-name ,args))))
-       ,@(when replay-fn
-           `((defmethod replay-output-record ((record ,class-name) stream
-                                              &optional (region +everywhere+)
-                                                (x-offset 0) (y-offset 0))
-               (declare (ignore x-offset y-offset region))
-               (with-slots (,@args) record
-                 (let ((,medium (sheet-medium stream)))
-                   ;; Graphics state is set up in :around method.
-                   (,method-name ,medium ,@args)))))))))
-
-(def-grecording draw-point ((gs-line-style-mixin) point-x point-y) ()
+(def-grecording draw-point (gs-line-style-mixin)
+    (point-x point-y)
   (let ((border (graphics-state-line-style-border graphic medium)))
     (with-transformed-position ((medium-transformation medium) point-x point-y)
       (setf (slot-value graphic 'point-x) point-x
@@ -1213,14 +1235,19 @@ were added."
        (if-supplied (point-y coordinate)
          (coordinate= (slot-value record 'point-y) point-y))))
 
-(def-grecording draw-points ((coord-seq-mixin gs-line-style-mixin) coord-seq) ()
+;;; Initialize the output record with a copy of COORD-SEQ, as the
+;;; replaying code will modify it to be positioned relative to the
+;;; output-record's position and making a temporary is (arguably) less
+;;; bad than untransforming the coords back to how they were.
+(def-grecording draw-points (coord-seq-mixin gs-line-style-mixin)
+    ((coord-seq (copy-sequence-into-vector coord-seq)))
   (let ((transformed-coord-seq (transform-positions (medium-transformation medium) coord-seq))
         (border (graphics-state-line-style-border graphic medium)))
     (setf (slot-value graphic 'coord-seq) transformed-coord-seq)
     (coord-seq-bounds transformed-coord-seq border)))
 
-(def-grecording draw-line ((gs-line-style-mixin)
-                           point-x1 point-y1 point-x2 point-y2) ()
+(def-grecording draw-line (gs-line-style-mixin)
+    (point-x1 point-y1 point-x2 point-y2)
   (let ((transform (medium-transformation medium))
         (border (graphics-state-line-style-border graphic medium)))
     (with-transformed-position (transform point-x1 point-y1)
@@ -1259,7 +1286,9 @@ were added."
        (if-supplied (point-y2 coordinate)
          (coordinate= (slot-value record 'point-y2) point-y2))))
 
-(def-grecording draw-lines ((coord-seq-mixin gs-line-style-mixin) coord-seq) ()
+;;; Regarding COORD-SEQ, see comment for DRAW-POINTS.
+(def-grecording draw-lines (coord-seq-mixin gs-line-style-mixin)
+    ((coord-seq (copy-sequence-into-vector coord-seq)))
   (let* ((transformation (medium-transformation medium))
          (transformed-coord-seq (transform-positions transformation coord-seq))
          (border (graphics-state-line-style-border graphic medium)))
@@ -1381,8 +1410,10 @@ were added."
                    (maxf max-y (+ y border)))))
              (values min-x min-y max-x max-y)))))
 
-(def-grecording draw-polygon ((coord-seq-mixin gs-line-style-mixin)
-                              coord-seq closed filled) ()
+;;; Regarding COORD-SEQ, see comment for DRAW-POINTS.
+(def-grecording draw-polygon (coord-seq-mixin gs-line-style-mixin)
+    ((coord-seq (copy-sequence-into-vector coord-seq))
+     closed filled)
   (let ((transformed-coord-seq (transform-positions (medium-transformation medium) coord-seq))
         (border (graphics-state-line-style-border graphic medium)))
     (setf coord-seq transformed-coord-seq)
@@ -1396,8 +1427,8 @@ were added."
        (if-supplied (filled)
          (eql (slot-value record 'filled) filled))))
 
-(def-grecording draw-rectangle ((gs-line-style-mixin)
-                                left top right bottom filled) (:medium-fn nil)
+(def-grecording (draw-rectangle :medium-fn nil) (gs-line-style-mixin)
+    (left top right bottom filled)
   (let* ((transform (medium-transformation medium))
          (border     (graphics-state-line-style-border graphic medium))
          (pre-coords (expand-rectangle-coords left top right bottom))
@@ -1407,7 +1438,8 @@ were added."
     (polygon-record-bounding-rectangle coords t filled line-style border
                                        (medium-miter-limit medium))))
 
-(defmethod medium-draw-rectangle* :around ((stream output-recording-stream) left top right bottom filled)
+(defmethod medium-draw-rectangle* :around ((stream output-recording-stream)
+                                           left top right bottom filled)
   (let ((tr (medium-transformation stream)))
     (if (rectilinear-transformation-p tr)
         (generate-medium-recording-body draw-rectangle-output-record
@@ -1417,25 +1449,27 @@ were added."
                               t
                               filled))))
 
-(def-grecording draw-rectangles ((coord-seq-mixin gs-line-style-mixin)
-                                 coord-seq filled) (:medium-fn nil)
+(def-grecording (draw-rectangles :medium-fn nil) (coord-seq-mixin gs-line-style-mixin)
+    (coord-seq filled)
   (let* ((transform (medium-transformation medium))
          (border (graphics-state-line-style-border graphic medium)))
     (let ((transformed-coord-seq
-           (map-repeated-sequence 'vector 2
-                                  (lambda (x y)
-                                    (with-transformed-position (transform x y)
-                                      (values x y)))
-                                  coord-seq)))
+            (map-repeated-sequence 'vector 2
+                                   (lambda (x y)
+                                     (with-transformed-position (transform x y)
+                                       (values x y)))
+                                   coord-seq)))
       (polygon-record-bounding-rectangle transformed-coord-seq
                                          t filled line-style border
                                          (medium-miter-limit medium)))))
 
-(defmethod medium-draw-rectangles* :around ((stream output-recording-stream) coord-seq filled)
+(defmethod medium-draw-rectangles* :around ((stream output-recording-stream)
+                                            coord-seq filled)
   (let ((tr (medium-transformation stream)))
     (if (rectilinear-transformation-p tr)
-        (generate-medium-recording-body draw-rectangles-output-record
-                                        (coord-seq filled))
+        (generate-medium-recording-body
+         draw-rectangles-output-record
+         ((coord-seq (copy-sequence-into-vector coord-seq)) filled))
         (do-sequence ((left top right bottom) coord-seq)
           (medium-draw-polygon* stream (vector left top
                                                left bottom
@@ -1469,10 +1503,9 @@ were added."
        (if-supplied (filled)
          (eql (slot-value record 'filled) filled))))
 
-(def-grecording draw-ellipse ((gs-line-style-mixin)
-                              center-x center-y
-                              radius-1-dx radius-1-dy radius-2-dx radius-2-dy
-                              start-angle end-angle filled) ()
+(def-grecording draw-ellipse (gs-line-style-mixin)
+    (center-x center-y radius-1-dx radius-1-dy radius-2-dx radius-2-dy
+     start-angle end-angle filled)
   (let ((transform (medium-transformation medium)))
     (setf (values center-x center-y)
           (transform-position transform center-x center-y))
@@ -1543,10 +1576,13 @@ were added."
          (setf max-y (max max-y y)))
     finally (return (values min-x min-y max-x max-y))))
 
-(def-grecording draw-text ((gs-text-style-mixin gs-transformation-mixin)
-                           string point-x point-y start end align-x align-y
-                           toward-x toward-y transform-glyphs)
-    (:replay-fn nil)
+(def-grecording (draw-text :replay-fn nil) (gs-text-style-mixin gs-transformation-mixin)
+    ((string (subseq string (or start 0) (or end (length string))))
+     point-x point-y
+     (start  nil nil)
+     (end    nil nil)
+     align-x align-y
+     toward-x toward-y transform-glyphs)
   ;; FIXME!!! Text direction.
   (let* ((transformation (medium-transformation medium))
          (text-style (graphics-state-text-style graphic)))
@@ -1554,7 +1590,6 @@ were added."
     (multiple-value-bind (left top right bottom)
         (text-bounding-rectangle* medium string
                                   :align-x align-x :align-y align-y
-                                  :start start :end end
                                   :text-style text-style)
       (if transform-glyphs
           (enclosing-transform-polygon transformation (list (+ point-x left)  (+ point-y top)
@@ -1579,11 +1614,11 @@ were added."
     ((record draw-text-output-record) stream
      &optional (region +everywhere+) (x-offset 0) (y-offset 0))
   (declare (ignore x-offset y-offset region))
-  (with-slots (string point-x point-y start end align-x align-y toward-x
+  (with-slots (string point-x point-y align-x align-y toward-x
                toward-y transform-glyphs transformation)
       record
     (let ((medium (sheet-medium stream)))
-      (medium-draw-text* medium string point-x point-y start end align-x
+      (medium-draw-text* medium string point-x point-y 0 nil align-x
                          align-y toward-x toward-y transform-glyphs))))
 
 (defrecord-predicate draw-text-output-record
