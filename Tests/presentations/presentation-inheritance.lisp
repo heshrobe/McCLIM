@@ -19,9 +19,43 @@
 (define-presentation-type pti.0002.class  ())
 (define-presentation-type pti.0002.class* () :inherit-from 'pti.0002.class)
 (test pti.0002.inherit-class
-  (let ((foo (make-instance 'pti.0002.class)))
+  (let ((foo (make-instance 'pti.0002.class))
+        (bar (make-instance 'pti.0002.other)))
     (is (presentation-typep foo 'pti.0002.class))
-    (fails
-      (handler-case (is (presentation-typep foo 'pti.0002.class*))
-        (error () (fail "Function behavior is not inherited."))))
+    (is (presentation-typep foo 'pti.0002.class*))
+    (fails (is (not (presentation-typep bar 'pti.0002.class*))))
+    (is (presentation-typep foo 'pti.0002.class*))
     (is (not (presentation-typep foo 'pti.0002.other)))))
+
+(test pti.0003.inheritance-validity
+  (define-presentation-type pti.0003.super1 ())
+  (define-presentation-type pti.0003.super2 ())
+  (finishes
+    (define-presentation-type pti.0003.sub1 ()
+      :inherit-from 'pti.0003.super1))
+  (finishes
+    (define-presentation-type pti.0003.sub2 ()
+      :inherit-from '(and pti.0003.super1
+                          pti.0003.super2)))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub3 ()
+      :inherit-from '(and pti.0003.super1
+                      (and pti.0003.super2 pti.0003.super1))))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub4 ()
+      :inherit-from '(not string)))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub5 ()
+      :inherit-from '(satisfies list)))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub6 ()
+      :inherit-from '(or pti.0003.super1 pti.0003.suyper2)))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub7 ()
+      :inherit-from '(and (or pti.0003.super1 pti.0003.super2))))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub8 ()
+      :inherit-from '(and pti.0003.super1 pti.0003.super2 (satisfies (list)))))
+  (compilation-signals error
+    (define-presentation-type pti.0003.sub9 ()
+      :inherit-from '(and pti.0003.super1 (not pti.0003.super2)))))

@@ -29,8 +29,8 @@
       (make-default-description name))))
 
 (defun default-describe-presentation-type (description stream plural-count)
-  (if (symbolp description)
-      (setq description (make-default-description (symbol-name description))))
+  (when (symbolp description)
+    (setq description (make-default-description (symbol-name description))))
   (cond ((eql 1 plural-count)
          (format stream "~:[a~;an~] ~A"
                    (find (char description 0) "aeiouAEIOU")
@@ -115,33 +115,6 @@ otherwise return false."
     %presentation-subtypep
     presentation-subtypep
   (type-key type putative-supertype))
-
-;;; The semantics of the presentation method presentation-subtypep are truly
-;;; weird; method combination is in effect disabled.  So, the methods have to
-;;; be eql methods.
-
-(defmacro define-subtypep-method (&rest args)
-  (let ((gf (find-presentation-gf 'presentation-subtypep)))
-    (multiple-value-bind (qualifiers lambda-list decls body)
-        (parse-method-body args)
-      (let ((type-arg (nth (1- (type-arg-position gf)) lambda-list)))
-
-        (unless (consp type-arg)
-          (error "Type argument in presentation method must be specialized"))
-        (unless (eq (car type-arg)  'type)
-          (error "Type argument mismatch with presentation generic function
- definition"))
-        (destructure-type-arg (type-var type-spec type-name) type-arg
-          (declare (ignore type-spec))
-          (let ((method-ll `((,(type-key-arg gf)
-                              (eql (prototype-or-error ',type-name)))
-                             ,@(copy-list lambda-list))))
-            (setf (nth (type-arg-position gf) method-ll) type-var)
-            `(defmethod %presentation-subtypep ,@qualifiers ,method-ll
-               (declare (ignorable ,(type-key-arg gf))
-                        ,@(cdr decls))
-               (block presentation-subtypep
-                 ,@body))))))))
 
 ;;; PRESENTATION-SUBTYPEP suffers from some of the same problems as
 ;;; CL:SUBTYPEP, most (but sadly not all) of which were solved in

@@ -148,6 +148,18 @@
   (destructuring-bind (type-key-arg &optional parameters-arg options-arg &rest rest)
       lambda-list
     (with-current-source-form (lambda-list)
+      ;; What is a difference between TYPE-KEY and TYPE-CLASS?
+      ;;
+      ;; In McCLIM there is no difference but CLIM-TOS makes a
+      ;; distinction during the generic function dispatch:
+      ;;
+      ;; - TYPE-KEY   - methods are inherited
+      ;; - TYPE-CLASS - methods are not inherited
+      ;;
+      ;; When methods are not inherited and the presentation type
+      ;; class doesn't have a method specialized on it, the default
+      ;; method of a generic function is used instead of the method
+      ;; specialized on its supertype. -- jd 2020-06-30
       (unless (member type-key-arg '(type-key type-class))
         (error "The first argument in a presentation generic function ~
                 must be type-key or type-class"))
@@ -199,60 +211,94 @@
       't
       (type-name (class-of type-key))))
 
+(defun bind-parameters-and-options (gf lambda-list body
+                                    type-key-arg type-var type-spec type-name)
+  (let ((par-arg (parameters-arg gf))
+        (opt-arg (options-arg gf))
+        (ptype (find-presentation-type type-name nil)))
+    (unless (and ptype (or par-arg opt-arg))
+      (return-from bind-parameters-and-options body))
+    (let* ((opt-ll (and opt-arg (options-lambda-list ptype)))
+           (par-ll (and par-arg (parameters-lambda-list ptype)))
+           (mth-vars (get-all-params lambda-list))
+           (opt-vars (get-all-params opt-ll))
+           (par-vars (get-all-params par-ll))
+           (massaged-type (gensym "MASSAGED-TYPE")))
+      (let ((par-mth (intersection mth-vars par-vars))
+            (opt-mth (intersection (set-difference mth-vars par-vars) opt-vars))
+            (opt-par (intersection opt-vars par-vars)))
+        (when par-mth
+          (alexandria:simple-style-warning
+           "Method arguments ~s are shadowed by the presentation type ~
+            parameters." par-mth))
+        (when opt-mth
+          (alexandria:simple-style-warning
+           "Method arguments ~s are shadowed by the presentation type ~
+            options." opt-mth))
+        (when opt-par
+          (alexandria:simple-style-warning
+           "Presentation type parameters ~s are shadowed by the ~
+            presentation type options." opt-par)))
+      (when opt-arg
+        (setf body
+              `((let ((,opt-arg (decode-options ,massaged-type)))
+                  (destructuring-bind ,opt-ll ,opt-arg
+                    (declare (ignorable ,@opt-vars))
+                    ,@body)))))
+      (when par-arg
+        (setf body
+              `((let ((,par-arg (decode-parameters ,massaged-type)))
+                  (destructuring-bind ,par-ll ,par-arg
+                    (declare (ignorable ,@par-vars))
+                    ,@body)))))
+      `((let ((,massaged-type
+                ;; Different TYPE-SPEC and TYPE-NAME implies EQL
+                ;; specializer. In that case we fix the massaged
+                ;; type to TYPE-NAME which is the result of
+                ;; calling PRESENTATION-TYPE-OF on the object.
+                ;; -- jd 2020-07-02
+                ,(if (not (eq type-name type-spec))
+                     `(quote ,type-name)
+                     `(translate-specifier-for-type
+                       (type-name-from-type-key ,type-key-arg)
+                       (quote ,type-name)
+                       ,type-var))))
+          ,@body)))))
+
 (defmacro define-presentation-method (name &rest args)
-  (when (eq name 'presentation-subtypep)
-    ;; I feel so unclean!
-    (return-from define-presentation-method
-      `(define-subtypep-method ,@args)))
-  (let ((gf (find-presentation-gf name)))
-    (with-accessors ((parameters-arg parameters-arg)
-                     (options-arg options-arg))
-        gf
-      (multiple-value-bind (qualifiers lambda-list decls body)
-          (parse-method-body args)
-        (let ((type-arg (nth (1- (type-arg-position gf)) lambda-list)))
-          (with-current-source-form (type-arg)
-            (unless (consp type-arg)
-              (error "Type argument in presentation method must be ~
-                      specialized"))
-            (unless (eq (car type-arg)  'type)
-              (error "Type argument mismatch with presentation generic ~
-                      function definition")))
-          (destructure-type-arg (type-var type-spec type-name) type-arg
-            (let* ((method-ll `((,(type-key-arg gf)
-                                 ,(ptype-specializer type-spec))
-                                ,@(copy-list lambda-list)))
-                   (real-body body)
-                   (massaged-type (gensym "MASSAGED-TYPE")))
-              (when options-arg
-                (setq real-body
-                      `((let ((,options-arg (decode-options ,massaged-type)))
-                          (declare (ignorable ,options-arg))
-                          (with-presentation-type-options (,type-name
-                                                           ,massaged-type)
-                            ,@real-body)))))
-              (when parameters-arg
-                (setq real-body
-                      `((let ((,parameters-arg (decode-parameters
-                                                ,massaged-type)))
-                          (declare (ignorable ,parameters-arg))
-                          (with-presentation-type-parameters (,type-name
-                                                              ,massaged-type)
-                            ,@real-body)))))
-              (when (or options-arg parameters-arg)
-                (setq real-body
-                      `((let ((,massaged-type (translate-specifier-for-type
-                                               (type-name-from-type-key
-                                                ,(type-key-arg gf))
-                                               ',type-name
-                                               ,type-var)))
-                          ,@real-body))))
-              (setf (nth (type-arg-position gf) method-ll) type-var)
-              `(defmethod ,(generic-function-name gf) ,@qualifiers ,method-ll
-                 ,@(when decls
-                     (list decls))
-                 (block ,name
-                   ,@real-body)))))))))
+  (multiple-value-bind (qualifiers lambda-list decls body)
+      (parse-method-body args)
+    (let* ((gf (find-presentation-gf name))
+           (type-arg-pos (type-arg-position gf))
+           (type-arg (nth (1- type-arg-pos) lambda-list))
+           (type-key-arg (type-key-arg gf)))
+      (with-current-source-form (type-arg)
+        (unless (consp type-arg)
+          (error "Type argument in presentation method must be ~
+                 specialized"))
+        (unless (eq (car type-arg) 'type)
+          (error "Type argument mismatch with presentation generic ~
+                 function definition")))
+      (destructure-type-arg (type-var type-spec type-name) type-arg
+        ;; The semantics of the presentation method
+        ;; PRESENTATION-SUBTYPEP are truly weird; method combination is
+        ;; in effect disabled.  So, the methods have to be eql methods.
+        (let ((method-ll `((,type-key-arg
+                            ,(if (eq name 'presentation-subtypep)
+                                 `(eql (prototype-or-error ',type-name))
+                                 (ptype-specializer type-spec)))
+                           ,@(copy-list lambda-list))))
+          ;; In reality the presentation type is specialized on the
+          ;; method's first argument. Replace the (TYPE-VAR TYPE-SPEC)
+          ;; argument with the unspecialized argument TYPE-VAR.
+          (setf (nth type-arg-pos method-ll) type-var)
+          `(defmethod ,(generic-function-name gf) ,@qualifiers ,method-ll
+             ,@(when decls
+                 (list decls))
+             (block ,name
+               ,@(bind-parameters-and-options
+                  gf lambda-list body
+                  type-key-arg type-var type-spec type-name))))))))
 
 (defmacro define-default-presentation-method (name &rest args)
   (let ((gf (find-presentation-gf name)))

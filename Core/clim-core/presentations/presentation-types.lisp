@@ -558,6 +558,9 @@ filled in."
   (:documentation "Gets a list of the presentation type objects for those
 supertypes of TYPE that are presentation types"))
 
+(defmethod presentation-ptype-supers ((type (eql *builtin-t-class*)))
+  nil)
+
 (defmethod presentation-ptype-supers ((type symbol))
   (if-let ((ptype (find-presentation-type type nil)))
     (presentation-ptype-supers ptype)
@@ -611,52 +614,52 @@ supertypes of TYPE that are presentation types"))
       (setq downcase-name (nsubstitute-if-not #\Space
                                               #'alphanumericp
                                               downcase-name))
-      (string-trim " " downcase-name)))
+      (string-trim " " downcase-name))))
 
-  (defun record-presentation-type (name
-                                   parameters params-ll
-                                   options options-ll
-                                   description history
-                                   parameters-are-types
-                                   compile-time-p
-                                   supers expansion-func)
-    (let* ((fake-name (make-presentation-type-name name))
-           (ptype-class-args (list :type-name name
-                                   :parameters parameters
-                                   :parameters-lambda-list params-ll
-                                   :options options
-                                   :options-lambda-list options-ll
-                                   :description description
-                                   :history history
-                                   :parameters-are-types parameters-are-types
-                                   :expansion-function expansion-func))
-           (ptype-meta
-             (if compile-time-p
-                 (apply #'make-instance
-                        (if (compile-time-clos-p name)
-                            'clos-presentation-type
-                            'presentation-type)
-                        ptype-class-args)
-                 (let ((clos-meta (find-class name nil)))
-                   (if-let ((closp (typep clos-meta 'standard-class)))
-                     (apply #'make-instance 'clos-presentation-type
-                            :clos-class clos-meta
-                            ptype-class-args)
-                     (let ((directs (mapcan
-                                     #'(lambda (super)
-                                         (if (eq super t)
-                                             nil
-                                             (list (or (get-ptype-metaclass
-                                                        super)
-                                                       super))))
-                                     supers)))
-                       (apply #'c2mop:ensure-class fake-name
-                              :name fake-name
-                              :metaclass 'presentation-type-class
-                              :direct-superclasses directs
-                              ptype-class-args)))))))
-      (setf (gethash name *presentation-type-table*) ptype-meta)
-      ptype-meta)))
+(defun record-presentation-type (name
+                                 parameters params-ll
+                                 options options-ll
+                                 description history
+                                 parameters-are-types
+                                 compile-time-p
+                                 supers expansion-func)
+  (let* ((fake-name (make-presentation-type-name name))
+         (ptype-class-args (list :type-name name
+                                 :parameters parameters
+                                 :parameters-lambda-list params-ll
+                                 :options options
+                                 :options-lambda-list options-ll
+                                 :description description
+                                 :history history
+                                 :parameters-are-types parameters-are-types
+                                 :expansion-function expansion-func))
+         (ptype-meta
+           (if compile-time-p
+               (apply #'make-instance
+                      (if (compile-time-clos-p name)
+                          'clos-presentation-type
+                          'presentation-type)
+                      ptype-class-args)
+               (let ((clos-meta (find-class name nil)))
+                 (if-let ((closp (typep clos-meta 'standard-class)))
+                   (apply #'make-instance 'clos-presentation-type
+                          :clos-class clos-meta
+                          ptype-class-args)
+                   (let ((directs (mapcan
+                                   #'(lambda (super)
+                                       (if (eq super t)
+                                           nil
+                                           (list (or (get-ptype-metaclass
+                                                      super)
+                                                     super))))
+                                   supers)))
+                     (apply #'c2mop:ensure-class fake-name
+                            :name fake-name
+                            :metaclass 'presentation-type-class
+                            :direct-superclasses directs
+                            ptype-class-args)))))))
+    (setf (gethash name *presentation-type-table*) ptype-meta)
+    ptype-meta))
 
 (defgeneric massage-type-for-super (type-name super-name type-spec)
   (:documentation "translate TYPE-SPEC from that of TYPE-NAME to one
@@ -668,6 +671,26 @@ suitable for SUPER-NAME"))
   (declare (ignore type-spec))
   (values nil nil))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  ;; Function returns superclasses of the defined presentation.
+  (defun parse-inheritance (inherit-typespec)
+    (with-presentation-type-decoded (super-name super-params)
+        inherit-typespec
+      (case super-name
+        ((nil))
+        ((or not satisfies)
+         (error "~S is not supported in :INHERIT-FROM." super-name))
+        (and
+         (loop for super in super-params
+               for sname = (presentation-type-name super)
+               if (member sname '(and or not satisfies))
+                 do (error "AND in :INHERIT-FROM only supports classes, not ~S."
+                           super-name)
+               else
+                 collect sname))
+        (otherwise
+         (list super-name))))))
+
 ;;; Load-time actions for define-presentation-type
 (defmacro %define-presentation-type (name parameters params-ll
                                      options options-ll
@@ -675,14 +698,7 @@ suitable for SUPER-NAME"))
                                      description history parameters-are-types)
   (let* ((inherit-typespec (funcall (coerce inherit-from-lambda 'function)
                                     (cons name (fake-params-args params-ll))))
-         (superclasses (if inherit-typespec
-                           (with-presentation-type-decoded
-                               (super-name super-params)
-                               inherit-typespec
-                             (if (eq super-name 'and)
-                                 (mapcar #'presentation-type-name super-params)
-                                 (list super-name)))
-                           nil))
+         (superclasses (parse-inheritance inherit-typespec))
          (expansion-lambda (make-expansion-lambda params-ll options-ll)))
     `(progn
        (record-presentation-type ',name ',parameters ',params-ll ',options
@@ -690,21 +706,17 @@ suitable for SUPER-NAME"))
                                  ',description ',history
                                  ',parameters-are-types
                                  nil ',superclasses
-                                 #',expansion-lambda)
+                                 (function ,expansion-lambda))
        ,@(cond ((eq (presentation-type-name inherit-typespec) 'and)
                 (loop for super in superclasses
                       for i from 0
-                      append (unless (or (not (atom super))
-                                         (eq super 'satisfies)
-                                         (eq super 'not))
-                               `((defmethod massage-type-for-super
-                                     ((type-name (eql ',name))
-                                      (super-name (eql ',super))
-                                      type)
-                                   (values (nth ,i
-                                                (cdr (,inherit-from-lambda
-                                                      type)))
-                                           t))))))
+                      collect `(defmethod massage-type-for-super
+                                   ((type-name (eql ',name))
+                                    (super-name (eql ',super))
+                                    type)
+                                 (values
+                                  (nth ,i (cdr (,inherit-from-lambda type)))
+                                  t))))
                (superclasses
                 `((defmethod massage-type-for-super
                       ((type-name (eql ',name))
@@ -746,6 +758,8 @@ suitable for SUPER-NAME"))
   (declare (ignore env))
   (options (find-presentation-type type-name)))
 
+;;; XXX specification states, that the type-name must be a
+;;; presentation type specifier. Should we error otherwise?
 (defmacro with-presentation-type-parameters ((type-name type) &body body)
   (let ((ptype (get-ptype type-name)))
     (unless (or ptype (compile-time-clos-p type-name))
@@ -761,14 +775,14 @@ suitable for SUPER-NAME"))
                       ,type-var
                       ',type-name))
              (let ((,params (decode-parameters ,type-var)))
-               (declare (ignorable ,params))
                (destructuring-bind ,params-ll ,params
                  (declare (ignorable ,@ignorable-vars))
                  ,@body))))
         `(let ()
            ,@body))))
 
-
+;;; XXX specification states, that the TYPE-NAME must be a
+;;; presentation type specifier. Should we error otherwise?
 (defmacro with-presentation-type-options ((type-name type) &body body)
   (let ((ptype (get-ptype type-name)))
     (unless (or ptype (compile-time-clos-p type-name))
@@ -784,7 +798,6 @@ suitable for SUPER-NAME"))
                       ,type-var
                       ',type-name))
              (let ((,options (decode-options ,type-var)))
-               (declare (ignorable ,options))
                (destructuring-bind ,options-ll ,options
                  (declare (ignorable ,@ignorable-vars))
                  ,@body))))
