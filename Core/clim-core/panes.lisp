@@ -264,8 +264,16 @@ order to produce a double-click")
   (with-slots (width min-width max-width height min-height max-height) space-req
     (values width min-width max-width height min-height max-height)))
 
+(defmethod space-requirement-equal ((sr1 space-requirement) (sr2 space-requirement))
+  (multiple-value-bind (width1 min-width1 max-width1 height1 min-height1 max-height1)
+      (space-requirement-components sr1)
+    (multiple-value-bind (width2 min-width2 max-width2 height2 min-height2 max-height2)
+        (space-requirement-components sr2)
+      (and (eql width1 width2) (eql min-width1 min-width2) (eql max-width1 max-width2)
+           (eql height1 height2) (eql min-height1 min-height2) (eql max-height1 max-height2)))))
+
 (defun space-requirement-combine* (function sr1 &key (width 0) (min-width 0) (max-width 0)
-                                                (height 0) (min-height 0) (max-height 0))
+                                                     (height 0) (min-height 0) (max-height 0))
   (apply #'make-space-requirement
          (mapcan #'(lambda (c1 c2 keyword)
                      (list keyword (funcall function c1 c2)))
@@ -678,19 +686,17 @@ returned or error is signaled depending on the argument ERRORP.")
                                                    (height :nochange) (min-height :nochange) (max-height :nochange)
                                                    (x-spacing :nochange) (y-spacing :nochange)
                                               &allow-other-keys)
-  (with-slots (user-width user-min-width user-max-width
-               user-height user-min-height user-max-height
-               (user-x-spacing x-spacing)
-               (user-y-spacing y-spacing))
-      pane
-    (unless (eq width      :nochange) (setf user-width      width))
-    (unless (eq min-width  :nochange) (setf user-min-width  min-width))
-    (unless (eq max-width  :nochange) (setf user-max-width  max-width))
-    (unless (eq height     :nochange) (setf user-height     height))
-    (unless (eq min-height :nochange) (setf user-min-height min-height))
-    (unless (eq max-height :nochange) (setf user-max-height max-height))
-    (unless (eq x-spacing  :nochange) (setf user-x-spacing  x-spacing))
-    (unless (eq y-spacing  :nochange) (setf user-y-spacing  y-spacing)) ))
+  (macrolet ((update (parameter slot-name)
+               `(unless (eq ,parameter :nochange)
+                  (setf (slot-value pane ',slot-name) ,parameter))))
+    (update width user-width)
+    (update min-width user-min-width)
+    (update max-width user-max-width)
+    (update height user-height)
+    (update min-height user-min-height)
+    (update max-height user-max-height)
+    (update x-spacing user-x-spacing)
+    (update y-spacing user-y-spacing)))
 
 ;;;; LAYOUT-PROTOCOL-MIXIN
 
@@ -717,7 +723,7 @@ returned or error is signaled depending on the argument ERRORP.")
 
 (defmethod allocate-space :around ((pane layout-protocol-mixin) width height)
   (setf (pane-current-width pane) width
-	(pane-current-height pane) height)
+        (pane-current-height pane) height)
   (unless (top-level-sheet-pane-p pane)
     (resize-sheet pane width height))
   (call-next-method))
@@ -765,10 +771,10 @@ which changed during the current execution of CHANGING-SPACE-REQUIREMENTS.
                                               &rest space-req-keys
                                               &key resize-frame &allow-other-keys)
   (declare (ignore resize-frame space-req-keys))
-  ;; Clear the space requirements cache
-  (setf (pane-space-requirement pane) nil)
-  (setf (pane-current-width pane) nil)
-  (setf (pane-current-height pane) nil) )
+  ;; Clear current width and height.
+  (setf (pane-space-requirement pane) nil
+        (pane-current-width pane) nil
+        (pane-current-height pane) nil))
 
 (defmethod change-space-requirements ((pane layout-protocol-mixin)
                                       &key resize-frame &allow-other-keys)
@@ -2362,7 +2368,12 @@ SCROLLER-PANE appear on the ergonomic left hand side, or leave set to
     (setf (clime:label-pane-label instance) label)))
 
 (defmethod (setf clime:label-pane-label) :after (new-value (pane label-pane))
-  (change-space-requirements pane)
+  (when (if-let ((requirements (pane-space-requirement pane)))
+          (progn
+            (setf (pane-space-requirement pane) nil)
+            (not (space-requirement-equal requirements (compose-space pane))))
+          t)
+    (change-space-requirements pane))
   (repaint-sheet pane (sheet-region pane)))
 
 (defmacro labelling ((&rest options) &body contents)
