@@ -117,137 +117,277 @@ otherwise return false."
   (type-key type putative-supertype))
 
 ;;; PRESENTATION-SUBTYPEP suffers from some of the same problems as
-;;; CL:SUBTYPEP, most (but sadly not all) of which were solved in
-;;; H. Baker "A Decision Procedure for SUBTYPEP"; additionally, it
-;;; suffers from the behaviour being underspecified, as CLIM
-;;; documentation did not have the years of polish that CLtS did.
+;;; CL:SUBTYPEP, most (but sadly not all) of which were solved in H. Baker "A
+;;; Decision Procedure for SUBTYPEP"; additionally, it suffers from the
+;;; behaviour being underspecified, as CLIM documentation did not have the
+;;; years of polish that CLtS did.
 ;;;
-;;; So you might wonder why, instead of copying or using directly some
-;;; decent Public Domain subtype code (such as that found in SBCL,
-;;; implementing CL:SUBTYPEP), there's this slightly wonky
-;;; implementation here.  Well, some of the answer lies in the fact
-;;; that the subtype relationships answered by this predicate are not
-;;; in fact analogous to CL's type system.  The major use of
-;;; PRESENTATION-SUBTYPEP seems to be for determining whether a
-;;; presentation is applicable as input to a translator (including the
-;;; default translator, transforming an object to itself); actually,
-;;; the first step is taken by STUPID-SUBTYPEP, but that I believe is
-;;; simply intended to be a short-circuiting conservative version of
-;;; PRESENTATION-SUBTYPEP.
+;;; So you might wonder why, instead of copying or using directly some decent
+;;; Public Domain subtype code (such as that found in SBCL, implementing
+;;; CL:SUBTYPEP), there's this slightly wonky implementation here.  Well, some
+;;; of the answer lies in the fact that the subtype relationships answered by
+;;; this predicate are not in fact analogous to CL's type system.  The major
+;;; use of PRESENTATION-SUBTYPEP seems to be for determining whether a
+;;; presentation is applicable as input to a translator (including the default
+;;; translator, transforming an object to itself); actually, the first step is
+;;; taken by STUPID-SUBTYPEP, but that I believe is simply intended to be a
+;;; short-circuiting conservative version of PRESENTATION-SUBTYPEP.
 ;;;
 ;;; Most presentation types in CLIM are hierarchically arranged by
-;;; single-inheritance, and SUBTYPEP relations on the hierarchy are
-;;; easy to determine: simply walk up the hierarchy until you find the
-;;; putative supertype (in which case the answer is T, T unless the
-;;; type's parameters are wrong) or you find the universal supertype
-;;; (in which case the answer is NIL, T.  There are numerous wrinkles,
-;;; however...
+;;; single-inheritance, and SUBTYPEP relations on the hierarchy are easy to
+;;; determine: simply walk up the hierarchy until you find the putative
+;;; supertype (in which case the answer is T, T unless the type's parameters
+;;; are wrong) or you find the universal supertype (in which case the answer
+;;; is NIL, T.  There are numerous wrinkles, however...
 ;;;
-;;; (1) the NIL presentation type is the universal subtype, breaking
-;;;     the single-inheritance of the hierarchy.  This isn't too bad,
-;;;     because it can be special-cased.
+;;; (1) the NIL presentation type is the universal subtype, breaking the
+;;;     single-inheritance of the hierarchy.  This isn't too bad, because it
+;;;     can be special-cased.
 ;;;
-;;; (2) union types can be constructed, destroying the
-;;;     single-inheritance hierarchy (when used as a subtype).
+;;; (2) union types can be constructed, destroying the single-inheritance
+;;;     hierarchy (when used as a subtype).
 ;;;
-;;; (3) union types can give rise to ambiguity.  For example, is the
-;;;     NUMBER presentation type subtypep (OR REAL COMPLEX)?  What
-;;;     about (INTEGER 3 6) subtypep (OR (INTEGER 3 4) (INTEGER 5 6))?
-;;;     Is (OR A B) subtypep (OR B A)?  The answer to this last
-;;;     question is not obvious, as the two types have different
-;;;     ACCEPT behaviour if A and B have any Lisp objects in common,
-;;;     even if the presentation types are hierarchically unrelated...
+;;; (3) union types can give rise to ambiguity.  For example, is the NUMBER
+;;;     presentation type subtypep (OR REAL COMPLEX)?  What about (INTEGER 3
+;;;     6) subtypep (OR (INTEGER 3 4) (INTEGER 5 6))?  Is (OR A B) subtypep
+;;;     (OR B A)?  The answer to this last question is not obvious, as the two
+;;;     types have different ACCEPT behaviour if A and B have any Lisp objects
+;;;     in common, even if the presentation types are hierarchically
+;;;     unrelated...
 ;;;
 ;;; (4) intersection types can be constructed, destroying the
-;;;     single-inheritance hierarchy (when used as a supertype).  This
-;;;     is partially mitigated by the explicit documentation that the
-;;;     first type in the AND type's parameters is privileged and
-;;;     treated specially by ACCEPT.
+;;;     single-inheritance hierarchy (when used as a supertype).  This is
+;;;     partially mitigated by the explicit documentation that the first type
+;;;     in the AND type's parameters is privileged and treated specially by
+;;;     ACCEPT.
 ;;;
-;;; Given these difficulties, I'm aiming for roughly expected
-;;; behaviour from STUPID- and PRESENTATION-SUBTYPEP, rather than
-;;; something which has a comprehensive understanding of presentation
-;;; types and the Lisp object universe (as this would be unachievable
-;;; anyway: the user can write arbitrary PRESENTATION-TYPEP
-;;; functions); PRESENTATION-SUBTYPEP should not be thought of as a
-;;; predicate over sets of Lisp objects, but simply a formal predicate
-;;; over a graph of names.  This gives rise to the implementation
-;;; below for OR and AND types, and the hierarchical walk for all
-;;; other types.  CSR, 2007-01-10
-(defun presentation-subtypep (type maybe-supertype)
+;;; Given these difficulties, I'm aiming for roughly expected behaviour from
+;;; STUPID- and PRESENTATION-SUBTYPEP, rather than something which has a
+;;; comprehensive understanding of presentation types and the Lisp object
+;;; universe (as this would be unachievable anyway: the user can write
+;;; arbitrary PRESENTATION-TYPEP functions); PRESENTATION-SUBTYPEP should not
+;;; be thought of as a predicate over sets of Lisp objects, but simply a
+;;; formal predicate over a graph of names.  This gives rise to the
+;;; implementation below for OR and AND types, and the hierarchical walk for
+;;; all other types.  -- CSR, 2007-01-10
+;;;
+;;; (5) the COMPLETION presentation type ("one of") is equivalent to the
+;;;     Common Lisp type MEMBER. When it is used as MAYBE-SUBTYPE argument,
+;;;     then individual objects are used to determine its relation with
+;;;     MAYBE-SUPERTYPE. Otherwise "normal" rules apply.
+;;;
+;;; (6) the SUBSET-COMPLETION presentation type ("some of") doesn't have
+;;;     equivalent Common Lisp type. When it is used as MAYBE-SUBTYPE and
+;;;     MAYBE-SUPERTYPE is SEQUENCE, then individual objects are used to
+;;;     determine whether they satisfy the sequence element type.
+;;;
+;;; Both types depend on the result of calling PRESENTATION-TYPE-OF or
+;;; PRESENTATION-TYPEP on member objects and can't be determined based on the
+;;; single-inheritance lattice alone. -- jd 2020-07-10
+;;;
+(defun presentation-subtypep (maybe-subtype maybe-supertype)
   ;; special shortcuts: the universal subtype is privileged (and
   ;; doesn't in fact fit into a hierarchical lattice); the universal
   ;; supertype is easy to identify.
-  (when (or (eql type nil) (eql maybe-supertype t))
+  (when (or (eql maybe-subtype nil) (eql maybe-supertype t))
     (return-from presentation-subtypep (values t t)))
-  (when (eql type maybe-supertype)
+  (when (eql maybe-subtype maybe-supertype)
     (return-from presentation-subtypep (values t t)))
-  (with-presentation-type-decoded (super-name super-parameters)
+  (with-presentation-type-decoded (maybe-supertype-name maybe-supertype-parameters)
       maybe-supertype
-    (with-presentation-type-decoded (type-name type-parameters)
-        type
+    (with-presentation-type-decoded (maybe-subtype-name maybe-subtype-parameters)
+        maybe-subtype
       (cond
         ;; DO NOT BE TEMPTED TO REARRANGE THESE CLAUSES
-        ((eq type-name 'or)
-         (dolist (or-type type-parameters
+        ((eq maybe-subtype-name 'or)
+         (dolist (or-type maybe-subtype-parameters
                           (return-from presentation-subtypep (values t t)))
            (multiple-value-bind (yesp surep)
                (presentation-subtypep or-type maybe-supertype)
              (unless yesp
                (return-from presentation-subtypep (values yesp surep))))))
-        ((eq super-name 'and)
+        ((eq maybe-supertype-name 'and)
          (let ((result t))
-           (dolist (and-type super-parameters
+           (dolist (and-type maybe-supertype-parameters
                              (return-from presentation-subtypep
                                (values result result)))
              (cond
                ((and (consp and-type) (eq (car and-type) 'satisfies))
-                (setq result nil))
+                (if (eq maybe-subtype-name 'completion)
+                    (let ((pred (second and-type)))
+                      (destructuring-bind (sequence
+                                           &key (value-key 'identity)
+                                           &allow-other-keys)
+                          maybe-subtype-parameters
+                        (unless (every (lambda (elt)
+                                         (funcall pred (funcall value-key elt)))
+                                       sequence)
+                          (return-from presentation-subtypep (values nil t)))))
+                    (setq result nil)))
                ((and (consp and-type) (eq (car and-type) 'not))
                 (multiple-value-bind (yp sp)
-                    (presentation-subtypep type (cadr and-type))
+                    (presentation-subtypep maybe-subtype (cadr and-type))
                   (declare (ignore sp))
                   (if yp
                       (return-from presentation-subtypep (values nil t))
                       (setq result nil))))
                (t (multiple-value-bind (yp sp)
-                      (presentation-subtypep type and-type)
+                      (presentation-subtypep maybe-subtype and-type)
                     (unless yp
                       (if sp
                           (return-from presentation-subtypep (values nil t))
                           (setq result nil)))))))))
-        ((eq super-name 'or)
-         (assert (not (eq type-name 'or)))
+        ((eq maybe-supertype-name 'or)
+         (assert (not (eq maybe-subtype-name 'or)))
          ;; FIXME: this would be the right method were it not for the
          ;; fact that there can be unions 'in disguise' in the
          ;; subtype; examples:
+         ;;
          ;;   (PRESENTATION-SUBTYPEP 'NUMBER '(OR REAL COMPLEX))
          ;;   (PRESENTATION-SUBTYPEP '(INTEGER 3 6)
          ;;                          '(OR (INTEGER 2 5) (INTEGER 4 7)))
          ;; Sorry about that.
          (let ((surep t))
-           (dolist (or-type super-parameters
+           (dolist (or-type maybe-supertype-parameters
                             (return-from presentation-subtypep (values nil surep)))
              (multiple-value-bind (yp sp)
-                 (presentation-subtypep type or-type)
+                 (presentation-subtypep maybe-subtype or-type)
                (cond
                  (yp (return-from presentation-subtypep (values t t)))
                  ((not sp) (setq surep nil)))))))
-        ((eq type-name 'and)
-         (assert (not (eq super-name 'and)))
+        ((eq maybe-subtype-name 'and)
+         (assert (not (eq maybe-supertype-name 'and)))
          (multiple-value-bind (yp sp)
-             (presentation-subtypep (car type-parameters) maybe-supertype)
+             (presentation-subtypep (car maybe-subtype-parameters) maybe-supertype)
            (declare (ignore sp))
-           (return-from presentation-subtypep (values yp yp))))))
+           (return-from presentation-subtypep (values yp yp))))
+        ((and (eq maybe-subtype-name 'completion)
+              (not (eq maybe-supertype-name 'completion)))
+         (destructuring-bind (sequence
+                              &key (value-key 'identity)
+                              &allow-other-keys)
+             maybe-subtype-parameters
+           (return-from presentation-subtypep
+             (values
+              (every (lambda (elt)
+                       (presentation-typep (funcall value-key elt) maybe-supertype))
+                     sequence)
+              t))))
+        ((and (eq maybe-subtype-name 'subset-completion)
+              (eq maybe-supertype-name 'sequence))
+         (destructuring-bind (sequence
+                              &key (value-key 'identity)
+                              &allow-other-keys)
+             maybe-subtype-parameters
+           (let ((element-type (first maybe-supertype-parameters)))
+             (return-from presentation-subtypep
+               (values
+                (every (lambda (elt)
+                         (presentation-typep (funcall value-key elt) element-type))
+                       sequence)
+                t)))))))
     (map-over-presentation-type-supertypes
      #'(lambda (name massaged)
-         (when (eq name super-name)
+         (when (eq name maybe-supertype-name)
            (return-from presentation-subtypep
              (funcall-presentation-generic-function presentation-subtypep
                                                     massaged
                                                     maybe-supertype))))
-     type))
+     maybe-subtype))
   (values nil t))
+
+;;; This is to implement the requirement on presentation translators for doing
+;;; subtype calculations without reference to type parameters. We are generous
+;;; in that we return T when we are unsure, to give translator testers a
+;;; chance to accept or reject the translator. This is essentially
+;;;
+;;;   (multiple-value-bind (yesp surep)
+;;;       (presentation-subtypep maybe-subtype maybe-supertype)
+;;;     (or yesp (not surep)))
+;;;
+;;; except faster. The above relation should not be taken literally. The
+;;; actual relation between predicates is
+;;;
+;;;   (unless (stupid-subtypep maybe-subtype maybe-supertype)
+;;;     (multiple-value-bind (yesp surep)
+;;;         (presentation-subtypep maybe-subtype maybe-supertype)
+;;;       (assert (and (null yesp) surep))))
+;;;
+;;; for example the first relation is not preserved with
+;;;
+;;;   (presentation-subtypep '(integer 1 2) '(integer 2 4)) ; -> (nil t)
+;;;   (stupid-subtypep       '(integer 1 2) '(integer 2 4)) ; -> t
+;;;
+(defun stupid-subtypep (maybe-subtype maybe-supertype)
+  "Return T if MAYBE-SUBTYPE is a presentation subtype of
+MAYBE-SUPERTYPE, regardless of parameters."
+  (when (or (eq maybe-subtype nil) (eq maybe-supertype t))
+    (return-from stupid-subtypep t))
+  (when (eql maybe-subtype maybe-supertype)
+    (return-from stupid-subtypep t))
+  (let ((maybe-subtype-name (presentation-type-name maybe-subtype))
+        (maybe-supertype-name (presentation-type-name maybe-supertype)))
+    ;; See DEFUN PRESENTATION-SUBTYPEP for some caveats.
+    (cond
+      ((eq maybe-subtype-name 'or)
+       (let ((or-types (decode-parameters maybe-subtype)))
+         (every (lambda (x) (stupid-subtypep x maybe-supertype)) or-types)))
+      ((eq maybe-supertype-name 'and)
+       (let* ((super-* (decode-parameters maybe-supertype))
+              (super-1 (car super-*)))
+         (if (consp super-1)
+             (case (car super-1)
+               (satisfies (if (eq maybe-subtype-name 'completion)
+                              (let ((pred (second super-1)))
+                                (destructuring-bind (sequence
+                                                     &key (value-key 'identity)
+                                                     &allow-other-keys)
+                                    (decode-parameters maybe-subtype)
+                                  (every (lambda (elt)
+                                           (funcall pred (funcall value-key elt)))
+                                         sequence)))
+                              t))
+               (not (not (stupid-subtypep maybe-subtype (second super-1))))
+               (otherwise (stupid-subtypep maybe-subtype super-1)))
+             (stupid-subtypep maybe-subtype super-1))))
+      ((eq maybe-supertype-name 'or)
+       (let ((or-types (decode-parameters maybe-supertype)))
+         (some (lambda (x) (stupid-subtypep maybe-subtype x)) or-types)))
+      ((eq maybe-subtype-name 'and)
+       ;; This clause is actually not conservative, but probably in a way that
+       ;; no-one will complain about too much. Basically, we will only return
+       ;; T if the first type in the AND (which is treated specially by CLIM)
+       ;; is a subtypep of the MAYBE-SUPERTYPE.
+       (stupid-subtypep (car (decode-parameters maybe-subtype)) maybe-supertype))
+      ((and (eq maybe-subtype-name 'completion)
+            (not (eq maybe-supertype-name 'completion)))
+       (destructuring-bind (sequence
+                            &key (value-key 'identity)
+                            &allow-other-keys)
+           (decode-parameters maybe-subtype)
+         (every (lambda (elt)
+                  (presentation-typep (funcall value-key elt) maybe-supertype))
+                sequence)))
+      ((and (eq maybe-subtype-name 'subset-completion)
+            (eq maybe-supertype-name 'sequence))
+       (destructuring-bind (sequence
+                            &key (value-key 'identity)
+                            &allow-other-keys)
+           (decode-parameters maybe-subtype)
+         (let ((element-type (car (decode-parameters maybe-supertype))))
+           (every (lambda (elt)
+                    (presentation-typep (funcall value-key elt) element-type))
+                  sequence))))
+      (t
+       (let ((subtype-meta (get-ptype-metaclass maybe-subtype-name))
+             (maybe-supertype-meta (get-ptype-metaclass maybe-supertype-name)))
+         (unless (and subtype-meta maybe-supertype-meta)
+           (return-from stupid-subtypep nil))
+         (map-over-ptype-superclasses #'(lambda (super)
+                                          (when (eq maybe-supertype-meta super)
+                                            (return-from stupid-subtypep t)))
+                                      maybe-subtype-name)
+         nil)))))
 
 (define-default-presentation-method presentation-subtypep
     (type maybe-supertype)

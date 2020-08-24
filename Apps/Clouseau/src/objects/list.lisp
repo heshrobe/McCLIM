@@ -1,19 +1,14 @@
-;;;; Copyright (C) 2018, 2019 Jan Moringen
-;;;;
-;;;; This library is free software; you can redistribute it and/or
-;;;; modify it under the terms of the GNU Library General Public
-;;;; License as published by the Free Software Foundation; either
-;;;; version 2 of the License, or (at your option) any later version.
-;;;;
-;;;; This library is distributed in the hope that it will be useful,
-;;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-;;;; Library General Public License for more details.
-;;;;
-;;;; You should have received a copy of the GNU Library General Public
-;;;; License along with this library; if not, write to the
-;;;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-;;;; Boston, MA  02111-1307  USA.
+;;; ---------------------------------------------------------------------------
+;;;   License: LGPL-2.1+ (See file 'Copyright' for details).
+;;; ---------------------------------------------------------------------------
+;;;
+;;;  (c) copyright 2018-2020 Jan Moringen <jmoringe@techfak.uni-bielefeld.de>
+;;;
+;;; ---------------------------------------------------------------------------
+;;;
+;;; Places, inspection methods and commands for cons cells and lists
+;;; of different shapes.
+;;;
 
 (cl:in-package #:clouseau)
 
@@ -55,22 +50,28 @@
                (eq (value parent) list)
                (supportsp parent 'setf))))))
 
-(defmethod remove-value ((place list-element-place))
-  (let ((list (container place)))
-    (if (eq (cell place) list)
-        (setf (value (parent place)) (rest list))
+(defun delete-list-elemnt (element list-place)
+  (let ((list (container list-place)))
+    (if (eq element list)
+        (setf (value (parent list-place)) (rest list))
         (loop :for predecessor :on list
               :for middle = (rest predecessor)
               :for successor = (rest middle)
-              :when (eq middle (cell place))
+              :when (eq middle element)
               :do (setf (cdr predecessor) successor)
                   (return)))))
+
+(defmethod remove-value ((place list-element-place))
+  (delete-list-elemnt (cell place) place))
 
 (defclass alist-element-place (list-element-place)
   ())
 
 (defmethod remove-value ((place alist-element-place))
-  (delete (cell place) (container place)))
+  ;; Find the cons cell in the outer list that contains the cell in
+  ;; its car.
+  (let ((element (member (cell place) (container place))))
+    (delete-list-elemnt element place)))
 
 (defclass alist-key-place (key-place
                            alist-element-place)
