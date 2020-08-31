@@ -1376,7 +1376,6 @@ examine the type of the command menu item to see if it is
 (define-presentation-method accept ((type command) stream
                                     (view textual-view)
                                     &key)
-<<<<<<< HEAD
   (setq command-table (find-command-table command-table))
   (let ((start-position (and (input-editing-stream-p stream)
                              (stream-scan-pointer stream)))
@@ -1406,16 +1405,6 @@ examine the type of the command menu item to see if it is
                                                ;; on thing returned something unparseable
                                                :rescan nil))
                  (values object type))))))
-=======
-  (let ((command (funcall *command-parser* command-table stream)))
-    (cond ((null command)
-           (simple-parse-error "Empty command"))
-          ((partial-command-p command)
-           (funcall *partial-command-parser*
-            command-table stream command
-            (position *unsupplied-argument-marker* command)))
-          (t (values command type)))))
->>>>>>> master
 
 ;;; A presentation type for empty input at the command line; something for
 ;;; read-command to supply as a default.  The command is defined in
