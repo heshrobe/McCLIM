@@ -1,39 +1,36 @@
-;;; -*- Mode: Lisp; Package: CLIM-INTERNALS -*-
-
+;;; ---------------------------------------------------------------------------
+;;;   License: LGPL-2.1+ (See file 'Copyright' for details).
+;;; ---------------------------------------------------------------------------
+;;;
 ;;;  (c) copyright 1998,1999,2000 by Michael McDonald (mikemac@mikemac.com)
 ;;;  (c) copyright 2000 by Robert Strandh (strandh@labri.u-bordeaux.fr)
 ;;;  (c) copyright 2002 by Tim Moore (moore@bricoworks.com)
-
-;;; This library is free software; you can redistribute it and/or
-;;; modify it under the terms of the GNU Library General Public
-;;; License as published by the Free Software Foundation; either
-;;; version 2 of the License, or (at your option) any later version.
 ;;;
-;;; This library is distributed in the hope that it will be useful,
-;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-;;; Library General Public License for more details.
+;;; ---------------------------------------------------------------------------
 ;;;
-;;; You should have received a copy of the GNU Library General Public
-;;; License along with this library; if not, write to the
-;;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-;;; Boston, MA  02111-1307  USA.
+;;; Implementation of the command processing.
+;;;
 
-(in-package :clim-internals)
+(in-package #:clim-internals)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Command tables
 
-(defgeneric command-table-name (command-table))
-(defgeneric command-table-inherit-from (command-table))
-
 ;;; Container for info about a command
-
 (defclass command-item ()
+<<<<<<< HEAD
   ((command-name :initarg :command-name :reader command-item-name
                       :initarg nil)
    (command-line-name :initarg :command-line-name :reader command-line-name)))
+=======
+  ((command-name
+    :initarg :command-name
+    :reader command-item-name)
+   (command-line-name
+    :initarg :command-line-name
+    :reader command-line-name)))
+>>>>>>> master
 
 (defmethod print-object ((obj command-item) stream)
   (print-unreadable-object (obj stream :identity t :type t)
@@ -46,6 +43,7 @@
 ;;; According to the specification, command menu items are stored as
 ;;; lists.  This way seems better, and I hope nothing will break.
 (defclass %menu-item (command-item)
+<<<<<<< HEAD
   ((menu-name :reader command-menu-item-name :initarg :menu-name)
    (type :initarg :type :reader command-menu-item-type)
    (value :initarg :value :reader command-menu-item-value)
@@ -61,6 +59,40 @@
       (format stream "~:[~; ~]keystroke ~A"
               (slot-boundp item 'menu-name)
               (slot-value item 'keystroke)))))
+=======
+  ((menu-name
+    :initarg :menu-name
+    :reader command-menu-item-name)
+   (type
+    :initarg :type
+    :reader command-menu-item-type)
+   (value
+    :initarg :value
+    :reader command-menu-item-value)
+   (text-style
+    :initarg :text-style
+    :reader command-menu-item-text-style)
+   (keystroke
+    :initarg :keystroke)
+   (documentation
+    :initarg :documentation))
+  (:default-initargs :menu-name nil
+                     :type (alexandria:required-argument :type)
+                     :value (alexandria:required-argument :value)
+                     :text-style nil
+                     :keystroke nil
+                     :documentation nil))
+
+(defmethod print-object ((item %menu-item) stream)
+  (print-unreadable-object (item stream :identity t :type t)
+    (let ((menu-name (command-menu-item-name item))
+          (keystroke (slot-value item 'keystroke)))
+     (when menu-name
+       (format stream "~S" menu-name))
+     (when keystroke
+       (format stream "~:[~; ~]keystroke ~A"
+               menu-name keystroke)))))
+>>>>>>> master
 
 (defun command-menu-item-options (menu-item)
   (with-slots (documentation text-style) menu-item
@@ -72,7 +104,12 @@
                  :initform '()
                  :reader command-table-inherit-from
                  :type list)
+<<<<<<< HEAD
    (commands  :accessor commands :initarg :commands
+=======
+   (commands :accessor commands
+             :initarg :commands
+>>>>>>> master
              :initform (make-hash-table :test #'eq))
    (command-line-names :accessor command-line-names
                        :initform (make-hash-table :test #'equal))
@@ -98,9 +135,6 @@
 (defmethod command-table-inherit-from :around
     ((command-table standard-command-table))
   (mapcar #'find-command-table (call-next-method)))
-
-;;; Franz user manual says that this slot is setf-able
-(defgeneric (setf command-table-inherit-from) (inherit-from table))
 
 (defmethod (setf command-table-inherit-from)
     (inherit (table standard-command-table))
@@ -194,11 +228,8 @@ designator) inherits menu items."
 (defun menu-items-from-list (menu)
   (mapcar
    #'(lambda (item)
-       (destructuring-bind (name type value
-                                 &rest args)
-           item
-         (apply #'make-menu-item name type value
-                args)))
+       (destructuring-bind (name type value &rest args) item
+         (apply #'make-menu-item name type value args)))
    menu))
 
 (setf (gethash 'global-command-table *command-tables*)
@@ -399,6 +430,7 @@ designator) inherits menu items."
                              :test #'string-equal))))))
 
 (defun make-menu-item (name type value
+<<<<<<< HEAD
                        &key (documentation nil documentationp)
                        (keystroke nil keystrokep)
                        (text-style nil text-style-p)
@@ -419,6 +451,22 @@ designator) inherits menu items."
            ,@(and command-name-p `(:command-name ,command-name))
            ,@(and command-line-name-p
                   `(:command-line-name ,command-line-name)))))
+=======
+                       &key
+                         documentation
+                         keystroke
+                         text-style
+                         command-name
+                         command-line-name
+                       &allow-other-keys)
+  (make-instance '%menu-item
+                 :menu-name name :type type :value value
+                 :documentation documentation
+                 :keystroke keystroke
+                 :text-style text-style
+                 :command-name command-name
+                 :command-line-name command-line-name))
+>>>>>>> master
 
 (defun %add-menu-item (command-table item after)
   (with-slots (menu)
@@ -435,9 +483,8 @@ designator) inherits menu items."
                (cdr (member after menu
                      :key #'command-menu-item-name
                      :test #'string-equal))))))
-  (when (and (slot-boundp item 'keystroke)
-             (slot-value item 'keystroke))
-    (%add-keystroke-item command-table (slot-value item 'keystroke) item nil)))
+  (when-let ((keystroke (slot-value item 'keystroke)))
+    (%add-keystroke-item command-table keystroke item nil)))
 
 
 (defun add-menu-item-to-command-table (command-table
@@ -480,7 +527,7 @@ examine the type of the command menu item to see if it is
                        (with-slots (menu-name keystroke) item
                          (funcall function
                                   menu-name
-                                  (and (slot-boundp item 'keystroke) keystroke)
+                                  keystroke
                                   item)))
                    (slot-value table 'menu))))
       (map-table-entries table-object)
@@ -594,8 +641,12 @@ examine the type of the command menu item to see if it is
       (loop for gesture in keystroke-accelerators
             for item in keystroke-items
             do (funcall function
+<<<<<<< HEAD
                         (and (slot-boundp item 'menu-name)
                              (command-menu-item-name item))
+=======
+                        (command-menu-item-name item)
+>>>>>>> master
                         gesture
                         item)))))
 
@@ -674,6 +725,7 @@ examine the type of the command menu item to see if it is
               gesture))
         gesture)))
 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Commands
@@ -709,9 +761,13 @@ examine the type of the command menu item to see if it is
 
 (defun accept-form-for-argument (stream arg)
   (let ((accept-keys '(:default :default-type :display-default
+<<<<<<< HEAD
                        :prompt
                        ;;:documentation
                        :insert-default)))
+=======
+                       :prompt :documentation :insert-default)))
+>>>>>>> master
     (destructuring-bind (name ptype &rest key-args
                          &key (mentioned-default nil mentioned-default-p)
                          &allow-other-keys)
@@ -740,9 +796,13 @@ examine the type of the command menu item to see if it is
 (defun accept-form-for-argument-partial (stream ptype-arg command-arg
                                          original-command-arg )
   (let ((accept-keys '(:default :default-type :display-default
+<<<<<<< HEAD
                        :prompt
                        ;;:documentation
                        :insert-default)))
+=======
+                       :prompt :documentation :insert-default)))
+>>>>>>> master
     (destructuring-bind (name ptype &rest key-args)
         ptype-arg
       (declare (ignore name))
@@ -998,30 +1058,30 @@ examine the type of the command menu item to see if it is
               collect arg into required
               finally (return (values required (cdr arg-tail))))
       (let* ((command-func-args
-	      `(,@(mapcar #'car required-args)
-		,@(and
-		   keyword-args
-		   `(&key ,@(mapcar #'(lambda (arg-clause)
-					(destructuring-bind (arg-name ptype
-							     &key default
-							     &allow-other-keys)
-					    arg-clause
-					  (declare (ignore ptype))
-					  `(,arg-name ,default)))
-				    keyword-args)))))
-	     (accept-fun-name (gentemp (format nil "~A%ACCEPTOR%"
-					       (symbol-name func))
-				       (symbol-package func)))
-	     (partial-parser-fun-name (gentemp (format nil "~A%PARTIAL%"
-						       (symbol-name func))
-					       (symbol-package func)))
-	     (arg-unparser-fun-name (gentemp (format nil "~A%unparser%"
-						     (symbol-name func))
-					     (symbol-package func))))
-	`(progn
-	  (defun ,func ,command-func-args
-	    ,@body)
-	  ,(when command-table
+              `(,@(mapcar #'car required-args)
+                ,@(and
+                   keyword-args
+                   `(&key ,@(mapcar #'(lambda (arg-clause)
+                                        (destructuring-bind (arg-name ptype
+                                                             &key default
+                                                             &allow-other-keys)
+                                            arg-clause
+                                          (declare (ignore ptype))
+                                          `(,arg-name ,default)))
+                                    keyword-args)))))
+             (accept-fun-name (gentemp (format nil "~A%ACCEPTOR%"
+                                               (symbol-name func))
+                                       (symbol-package func)))
+             (partial-parser-fun-name (gentemp (format nil "~A%PARTIAL%"
+                                                       (symbol-name func))
+                                               (symbol-package func)))
+             (arg-unparser-fun-name (gentemp (format nil "~A%unparser%"
+                                                     (symbol-name func))
+                                             (symbol-package func))))
+        `(progn
+          (defun ,func ,command-func-args
+            ,@body)
+          ,(when command-table
              `(add-command-to-command-table
                ',func ',command-table
                :name ,name :menu ',menu
@@ -1032,19 +1092,19 @@ examine the type of the command menu item to see if it is
                               ,@(make-list (length required-args)
                                            :initial-element
                                            '*unsupplied-argument-marker*))))))
-	  ,(make-argument-accept-fun accept-fun-name
-				     required-args
-				     keyword-args)
-	  ,(make-partial-parser-fun partial-parser-fun-name required-args)
-	  ,(make-unprocessor-fun arg-unparser-fun-name
-				 required-args
-				 keyword-args)
-	  ,(and command-table
-		(make-command-translators func command-table required-args))
-	  (setf (gethash ',func *command-parser-table*)
-	        (make-instance 'command-parsers
-		               :parser #',accept-fun-name
-		               :partial-parser #',partial-parser-fun-name
+          ,(make-argument-accept-fun accept-fun-name
+                                     required-args
+                                     keyword-args)
+          ,(make-partial-parser-fun partial-parser-fun-name required-args)
+          ,(make-unprocessor-fun arg-unparser-fun-name
+                                 required-args
+                                 keyword-args)
+          ,(and command-table
+                (make-command-translators func command-table required-args))
+          (setf (gethash ',func *command-parser-table*)
+                (make-instance 'command-parsers
+                               :parser #',accept-fun-name
+                               :partial-parser #',partial-parser-fun-name
                                :required-args ',required-args
                                :keyword-args  ',keyword-args
                                :argument-unparser #',arg-unparser-fun-name))
@@ -1316,6 +1376,7 @@ examine the type of the command menu item to see if it is
 (define-presentation-method accept ((type command) stream
                                     (view textual-view)
                                     &key)
+<<<<<<< HEAD
   (setq command-table (find-command-table command-table))
   (let ((start-position (and (input-editing-stream-p stream)
                              (stream-scan-pointer stream)))
@@ -1345,6 +1406,16 @@ examine the type of the command menu item to see if it is
                                                ;; on thing returned something unparseable
                                                :rescan nil))
                  (values object type))))))
+=======
+  (let ((command (funcall *command-parser* command-table stream)))
+    (cond ((null command)
+           (simple-parse-error "Empty command"))
+          ((partial-command-p command)
+           (funcall *partial-command-parser*
+            command-table stream command
+            (position *unsupplied-argument-marker* command)))
+          (t (values command type)))))
+>>>>>>> master
 
 ;;; A presentation type for empty input at the command line; something for
 ;;; read-command to supply as a default.  The command is defined in

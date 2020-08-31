@@ -35,9 +35,10 @@
   (error "not implemented"))
 
 (defmethod make-object-state ((object t) (place slot-definition-place))
-  (make-instance (object-state-class object place) :place place
-                                                   :class (container place)
-                                                   :style :name-only))
+  (make-instance (object-state-class object place)
+                 :place         place
+                 :context-class (container place)
+                 :style         :name-only))
 
 ;;; `class-list-place'
 ;;;
@@ -76,9 +77,9 @@
 ;;; `inspected-slot-definition'
 
 (defclass inspected-slot-definition (inspected-instance
-                                     remembered-collapsed-style-mixin)
-  ((%context-class :initarg :class
-                   :reader  context-class)))
+                                     remembered-collapsed-style-mixin
+                                     context-class-mixin)
+  ())
 
 (defmethod object-state-class ((object c2mop:slot-definition) (place t))
   'inspected-slot-definition)
@@ -92,9 +93,8 @@
 
 (defmethod initialize-instance :after
     ((instance inspected-class-list)
-     &key
-     place
-     (class-list-style (default-class-list-style place)))
+     &key place
+          (class-list-style (default-class-list-style place)))
   (setf (class-list-style instance) class-list-style))
 
 (defmethod object-state-class ((object cons)
@@ -104,7 +104,8 @@
 ;;; `inspected-class'
 
 (defclass inspected-class (inspected-instance
-                           remembered-collapsed-style-mixin)
+                           remembered-collapsed-style-mixin
+                           context-class-mixin)
   ()
   (:default-initargs
    :slot-style nil))
@@ -121,9 +122,8 @@
                                        (state  inspected-slot-definition)
                                        (style  (eql :name-only))
                                        (stream t))
-  (let ((class-name (class-name (context-class state)))
-        (slot-name  (c2mop:slot-definition-name object)))
-    (print-symbol-in-context slot-name (symbol-package class-name) stream)))
+  (let ((slot-name (c2mop:slot-definition-name object)))
+    (print-symbol-in-context slot-name (context-package state) stream)))
 
 ;;; `inspected-class-list'
 
@@ -170,12 +170,15 @@
   (let ((name (class-name class)))
     (values (not name) (not (eq (find-class name nil) class)))))
 
-(defun print-class-name (object stream)
+(defun print-class-name (object stream &key context-package)
   (multiple-value-bind (no-name-p not-global-p) (anonymous-class-p object)
     (cond (no-name-p
            (badge stream "anonymous"))
           (t
-           (prin1 (class-name object) stream)
+           (let ((name (class-name object)))
+             (if context-package
+                 (print-symbol-in-context name context-package stream)
+                 (prin1 name stream)))
            (when not-global-p
              (write-char #\Space stream)
              (badge stream "no global name"))))))
@@ -184,7 +187,7 @@
                                        (state  inspected-class)
                                        (style  (eql :name-only))
                                        (stream t))
-  (print-class-name object stream))
+  (print-class-name object stream :context-package (context-package state)))
 
 (defmethod inspect-object-using-state ((object class)
                                        (state  inspected-class)

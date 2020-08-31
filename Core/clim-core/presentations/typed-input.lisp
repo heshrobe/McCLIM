@@ -46,9 +46,9 @@
                                             button-event))
 
 (defun highlight-current-presentation (frame input-context)
-  (alexandria:when-let* ((port-pointer (port-pointer (port *application-frame*)))
-                         (event (synthesize-pointer-motion-event port-pointer))
-                         (sheet (event-sheet event)))
+  (when-let* ((port-pointer (port-pointer (port *application-frame*)))
+              (event (synthesize-pointer-motion-event port-pointer))
+              (sheet (event-sheet event)))
     (frame-input-context-track-pointer frame input-context sheet event)))
 
 (defmacro with-input-context ((type &key override)
@@ -231,10 +231,12 @@
                                                       rest-args))))
                                     (t (do-accept rest-args))))
                          (unless *recursive-accept-p*
-                           (presentation-history-reset-pointer (get-history))))
-                       (do-accept rest-args))))
-                 (results-history (get-history)))
-            (when results-history
+                           ;; (get-history) can return NIL if, for
+                           ;; example, the frame layout changes.
+                           (when-let ((history (get-history)))
+                             (presentation-history-reset-pointer history))))
+                       (do-accept rest-args)))))
+            (when-let ((results-history (get-history)))
               (presentation-history-add results-history
                                         (car results)
                                         real-type))

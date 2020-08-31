@@ -79,6 +79,10 @@
    "This class implements a pane that supports the CLIM graphics,
     extended input and output, and output recording protocols."))
 
+(defmethod handle-event ((sheet clim-stream-pane)
+                         (event window-manager-focus-event))
+  (setf (port-keyboard-input-focus (port sheet)) sheet))
+
 (defmethod interactive-stream-p ((stream clim-stream-pane))
   t)
 
@@ -440,19 +444,17 @@ current background message was set."))
   (:pane
    (with-slots (stream pane scroll-bars) *application-frame*
      (multiple-value-setq (pane stream)
-       (make-clim-stream-pane
-        :name 'a-window-stream-pane
-        :display-time nil
-        :type 'window-stream
-        :scroll-bars scroll-bars
-        :height 400 :width 700))
+       (make-clim-stream-pane :name 'a-window-stream-pane
+                              :display-time nil
+                              :type 'window-stream
+                              :scroll-bars scroll-bars
+                              :height 400 :width 700))
      pane)))
 
-(defmethod close ((stream window-stream)
-                  &key abort)
+(defmethod close ((stream window-stream) &key abort)
   (declare (ignore abort))
-  (alexandria:when-let* ((frame (pane-frame stream))
-                         (fm (frame-manager frame)))
+  (when-let* ((frame (pane-frame stream))
+              (fm (frame-manager frame)))
     (disown-frame fm frame))
   (when (next-method-p)
     (call-next-method)))
