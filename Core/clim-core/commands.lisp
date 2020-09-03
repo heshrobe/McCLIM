@@ -19,18 +19,12 @@
 
 ;;; Container for info about a command
 (defclass command-item ()
-<<<<<<< HEAD
-  ((command-name :initarg :command-name :reader command-item-name
-                      :initarg nil)
-   (command-line-name :initarg :command-line-name :reader command-line-name)))
-=======
   ((command-name
     :initarg :command-name
     :reader command-item-name)
    (command-line-name
     :initarg :command-line-name
     :reader command-line-name)))
->>>>>>> master
 
 (defmethod print-object ((obj command-item) stream)
   (print-unreadable-object (obj stream :identity t :type t)
@@ -43,23 +37,6 @@
 ;;; According to the specification, command menu items are stored as
 ;;; lists.  This way seems better, and I hope nothing will break.
 (defclass %menu-item (command-item)
-<<<<<<< HEAD
-  ((menu-name :reader command-menu-item-name :initarg :menu-name)
-   (type :initarg :type :reader command-menu-item-type)
-   (value :initarg :value :reader command-menu-item-value)
-   (documentation :initarg :documentation :initform nil)
-   (text-style :initarg :text-style :reader command-menu-item-text-style :initform nil)
-   (keystroke :initarg :keystroke)))
-
-(defmethod print-object ((item %menu-item) stream)
-  (print-unreadable-object (item stream :identity t :type t)
-    (when (slot-boundp item 'menu-name)
-      (format stream "~S" (command-menu-item-name item)))
-    (when (slot-boundp item 'keystroke)
-      (format stream "~:[~; ~]keystroke ~A"
-              (slot-boundp item 'menu-name)
-              (slot-value item 'keystroke)))))
-=======
   ((menu-name
     :initarg :menu-name
     :reader command-menu-item-name)
@@ -72,10 +49,10 @@
    (text-style
     :initarg :text-style
     :reader command-menu-item-text-style)
-   (keystroke
-    :initarg :keystroke)
    (documentation
-    :initarg :documentation))
+    :initarg :documentation)
+   (keystroke
+    :initarg :keystroke))
   (:default-initargs :menu-name nil
                      :type (alexandria:required-argument :type)
                      :value (alexandria:required-argument :value)
@@ -92,7 +69,6 @@
      (when keystroke
        (format stream "~:[~; ~]keystroke ~A"
                menu-name keystroke)))))
->>>>>>> master
 
 (defun command-menu-item-options (menu-item)
   (with-slots (documentation text-style) menu-item
@@ -104,12 +80,8 @@
                  :initform '()
                  :reader command-table-inherit-from
                  :type list)
-<<<<<<< HEAD
-   (commands  :accessor commands :initarg :commands
-=======
    (commands :accessor commands
              :initarg :commands
->>>>>>> master
              :initform (make-hash-table :test #'eq))
    (command-line-names :accessor command-line-names
                        :initform (make-hash-table :test #'equal))
@@ -430,28 +402,6 @@ designator) inherits menu items."
                              :test #'string-equal))))))
 
 (defun make-menu-item (name type value
-<<<<<<< HEAD
-                       &key (documentation nil documentationp)
-                       (keystroke nil keystrokep)
-                       (text-style nil text-style-p)
-                       (command-name nil command-name-p)
-                       (command-line-name nil command-line-name-p)
-                       &allow-other-keys)
-  ;; v-- this may be wrong, we do this to allow
-  ;; text-style to contain make-text-style calls
-  ;; so we use a very limited evaluator - FIXME
-  (when (and (consp text-style)
-           (eq (first text-style) 'make-text-style))
-    (setq text-style (apply #'make-text-style (rest text-style))))
-  (apply #'make-instance '%menu-item
-         :menu-name name :type type :value value
-         `(,@(and documentationp `(:documentation ,documentation))
-           ,@(and keystrokep `(:keystroke ,keystroke))
-           ,@(and text-style-p `(:text-style ,text-style))
-           ,@(and command-name-p `(:command-name ,command-name))
-           ,@(and command-line-name-p
-                  `(:command-line-name ,command-line-name)))))
-=======
                        &key
                          documentation
                          keystroke
@@ -466,7 +416,6 @@ designator) inherits menu items."
                  :text-style text-style
                  :command-name command-name
                  :command-line-name command-line-name))
->>>>>>> master
 
 (defun %add-menu-item (command-table item after)
   (with-slots (menu)
@@ -641,12 +590,7 @@ examine the type of the command menu item to see if it is
       (loop for gesture in keystroke-accelerators
             for item in keystroke-items
             do (funcall function
-<<<<<<< HEAD
-                        (and (slot-boundp item 'menu-name)
-                             (command-menu-item-name item))
-=======
                         (command-menu-item-name item)
->>>>>>> master
                         gesture
                         item)))))
 
@@ -761,13 +705,9 @@ examine the type of the command menu item to see if it is
 
 (defun accept-form-for-argument (stream arg)
   (let ((accept-keys '(:default :default-type :display-default
-<<<<<<< HEAD
                        :prompt
                        ;;:documentation
                        :insert-default)))
-=======
-                       :prompt :documentation :insert-default)))
->>>>>>> master
     (destructuring-bind (name ptype &rest key-args
                          &key (mentioned-default nil mentioned-default-p)
                          &allow-other-keys)
@@ -796,13 +736,9 @@ examine the type of the command menu item to see if it is
 (defun accept-form-for-argument-partial (stream ptype-arg command-arg
                                          original-command-arg )
   (let ((accept-keys '(:default :default-type :display-default
-<<<<<<< HEAD
                        :prompt
                        ;;:documentation
                        :insert-default)))
-=======
-                       :prompt :documentation :insert-default)))
->>>>>>> master
     (destructuring-bind (name ptype &rest key-args)
         ptype-arg
       (declare (ignore name))
