@@ -62,25 +62,43 @@
   (multiple-value-bind (yesp surep)
       (presentation-subtypep type supertype)
     (is (and yesp surep)
-        "Expected (T T), got (~s ~s)~%for ~s~%and ~s"
+        "Expected (T T), got (~s ~s) for~%~
+         ~2@T~2@T(presentation-subtypep ~s ~s)"
         yesp surep type supertype))
   #+mcclim
   ;; we can do this because *presentation-type-supertypes* doesn't do
   ;; clever things with type parameters
-  (is-true (climi::stupid-subtypep type supertype)))
+  (is-true (climi::stupid-subtypep type supertype)
+           "(~S ~S ~S) did not return a true value"
+           'climi::stupid-subtypep type supertype))
 
 (defun expect-nil-t (type supertype)
   (multiple-value-bind (yesp surep)
       (presentation-subtypep type supertype)
     (is (and (null yesp) surep)
-        "Expected (NIL T), got (~s ~s)~%for ~s~%and ~s"
+        "Expected (NIL T) but got (~s ~s) for~%~
+         ~2@T(presentation-subtypep ~s ~s)"
         yesp surep type supertype)))
 
 (defun expect-nil-nil (type supertype)
   (multiple-value-bind (yesp surep)
       (presentation-subtypep type supertype)
     (is (and (null yesp) (null surep))
-        "Expected (NIL NIL), got (~s ~s)~%for ~s~%and ~s"
+        "Expected (NIL NIL) but got (~s ~s) for~%~
+         ~2@T(presentation-typetypep ~s ~s)"
+        yesp surep type supertype))
+  ;; stupid-subtypep must be conservative in what it reports as possibly
+  ;; acceptable.
+  #+mcclim
+  (is-true (climi::stupid-subtypep type supertype)
+           "(~S ~S ~S) did not return a true value"
+           'climi::stupid-subtypep type supertype))
+
+(defun expect-t-nil (type supertype)
+  (multiple-value-bind (yesp surep)
+      (presentation-subtypep type supertype)
+    (is (and yesp (null surep))
+        "Expected (T NIL), got (~s ~s)~%for ~s~%and ~s"
         yesp surep type supertype))
   ;; stupid-subtypep must be conservative in what it reports as possibly
   ;; acceptable.
@@ -149,7 +167,10 @@
   (expect-t-t '(completion (3)) '(and (satisfies integerp)))
   ;; completion vs completion
   (expect-t-t '(completion (3)) '(completion (3 4 5)))
-  (expect-nil-t '(completion (3 4)) '(completion (3 5))))
+  (expect-nil-t '(completion (3 4)) '(completion (3 5)))
+  ;; other presentation vs completion
+  (expect-nil-nil 'integer '(completion (1 2 3 "foo")))
+  (expect-nil-t 'integer '(completion ("foo" "bar"))))
 
 ;;; SUBSET-COMPLETION
 (test presentations.type-relations.7
@@ -161,6 +182,20 @@
   (expect-t-t '(subset-completion (1 2)) '(subset-completion (1 2 3)))
   (expect-nil-t '(subset-completion (1 2)) '(subset-completion (1))))
 
+(test presentations.type-relations.sequence-enumerated
+  ;; vs SEQUENCE-ENUMERATED
+  (expect-t-t '(sequence-enumerated) '(sequence-enumerated))
+  (expect-t-t '(sequence-enumerated integer integer) '(sequence-enumerated integer real))
+  (expect-nil-t '(sequence-enumerated integer real) '(sequence-enumerated integer integer))
+  (expect-nil-t '(sequence-enumerated integer) '(sequence-enumerated integer integer))
+  (expect-nil-t '(sequence-enumerated integer integer) '(sequence-enumerated integer))
+  ;; vs SEQUENCE
+  (expect-t-t '(sequence-enumerated) '(sequence integer))
+  (expect-t-t '(sequence-enumerated integer integer) '(sequence integer))
+  (expect-nil-t '(sequence-enumerated real integer) '(sequence integer))
+  (expect-nil-t '(sequence integer) '(sequence-enumerated real integer))
+  (expect-nil-t '(sequence integer) '(sequence-enumerated integer integer)))
+
 ;;; This is a test for an issue where a parametrized class without
 ;;; defined PRESENTATION-TYPEP method doesn't error.
 (test presentations.typep.1
@@ -168,3 +203,40 @@
   (define-presentation-type foo (a))
   (is (not (presentation-typep 3 '(foo 3))))
   (signals error (presentation-typep (make-instance 'foo) '(foo 3))))
+
+;;; Presentation type specifiers, names, parameters and options
+
+(defclass class-presentation-type () ())
+
+(define-presentation-type simple-presentation-type ())
+
+(define-presentation-type presentation-type-with-parameters (foo bar))
+
+(define-presentation-type presentation-type-with-options ()
+  :options (baz fez))
+
+(test presentations.type-parameters.smoke
+  (flet ((expect (expected-parameters type-name)
+           (let ((result (presentation-type-parameters type-name)))
+             (is (equal expected-parameters result)
+                 "~@<Expected ~S to have parameters ~:S, but got ~
+                  ~:S.~@:>"
+                 type-name expected-parameters result))))
+    (expect '()        'class-presentation-type)
+    (expect '()        (find-class 'class-presentation-type))
+    (expect '()        'simple-presentation-type)
+    (expect '(foo bar) 'presentation-type-with-parameters)
+    (expect '()        'presentation-type-with-options)))
+
+(test presentations.type-options.smoke
+  (flet ((expect (expected-options type-name)
+           (let ((result (presentation-type-options type-name)))
+             (is (equal expected-options result)
+                 "~@<Expected ~S to have options ~:S, but got ~
+                  ~:S.~@:>"
+                 type-name expected-options result))))
+    (expect '()        'class-presentation-type)
+    (expect '()        (find-class 'class-presentation-type))
+    (expect '()        'simple-presentation-type)
+    (expect '()        'presentation-type-with-parameters)
+    (expect '(baz fez) 'presentation-type-with-options)))

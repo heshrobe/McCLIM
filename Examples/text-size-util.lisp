@@ -1,24 +1,16 @@
-;;; -*- Mode: Lisp; -*-
-
-;;;  (c) 2006 David Lichteblau (david@lichteblau.com)
-;;;  (c) 2018 Jan Moringen (jmoringe@techfak.uni-bielefeld.de)
-
-;;; This library is free software; you can redistribute it and/or
-;;; modify it under the terms of the GNU Library General Public
-;;; License as published by the Free Software Foundation; either
-;;; version 2 of the License, or (at your option) any later version.
+;;; ---------------------------------------------------------------------------
+;;;   License: LGPL-2.1+ (See file 'Copyright' for details).
+;;; ---------------------------------------------------------------------------
 ;;;
-;;; This library is distributed in the hope that it will be useful,
-;;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-;;; Library General Public License for more details.
+;;;  (c) copyright 2006 David Lichteblau (david@lichteblau.com)
+;;;  (c) copyright 2018-2020 Jan Moringen (jmoringe@techfak.uni-bielefeld.de)
 ;;;
-;;; You should have received a copy of the GNU Library General Public
-;;; License along with this library; if not, write to the
-;;; Free Software Foundation, Inc., 59 Temple Place - Suite 330,
-;;; Boston, MA  02111-1307  USA.
+;;; ---------------------------------------------------------------------------
+;;;
+;;; Utilities for text size-related tests.
+;;;
 
-(cl:in-package #:clim-demo)
+(in-package #:clim-demo)
 
 ;;; State
 
@@ -32,7 +24,7 @@
    (%text-size   :initarg  :text-size
                  :accessor text-size*)
    (%rectangle   :initarg  :rectangle
-                 :type     (member :text-size :text-bounding-rectangle)
+                 :type     (member nil :text-size :text-bounding-rectangle)
                  :accessor rectangle)
    (%hook        :initarg  :hook
                  :accessor hook
@@ -122,28 +114,30 @@
                                 (error (c)
                                   c)))
                       2 pane-height :text-style legend-text-style)
-          (component "Ascent"
-                     (lambda (stream)
-                       (let ((ascent (text-style-ascent style medium)))
-                         (draw-vdist stream (- x1 20) ybase (- ybase ascent)))))
-          (component "Descend"
-                     (lambda (stream)
-                       (let ((descent (text-style-descent style medium)))
-                         (draw-vdist stream (- x1 20) ybase (+ ybase descent)))))
-          (component "Height"
-                     (lambda (stream)
-                       (let ((height (text-style-height style medium)))
-                         (draw-vdist stream (- x1 40) y1 (+ y1 height))))
-                     :line-style (make-line-style :thickness 2))
-          (component "Average character width"
-                     (lambda (stream)
-                       (let ((width (text-style-width style medium)))
-                         (draw-hdist stream (- y1 20) x1 (+ x1 width)))))
-          (component "Baseline"
-                     (lambda (stream)
-                       (draw-line* stream 0 ybase pane-width ybase)))
+          (case rectangle
+            ((:text-size :text-bounding-rectangle)
+             (component "Ascent"
+                        (lambda (stream)
+                          (let ((ascent (text-style-ascent style medium)))
+                            (draw-vdist stream (- x1 20) ybase (- ybase ascent)))))
+             (component "Descend"
+                        (lambda (stream)
+                          (let ((descent (text-style-descent style medium)))
+                            (draw-vdist stream (- x1 20) ybase (+ ybase descent)))))
+             (component "Height"
+                        (lambda (stream)
+                          (let ((height (text-style-height style medium)))
+                            (draw-vdist stream (- x1 40) y1 (+ y1 height))))
+                        :line-style (make-line-style :thickness 2))
+             (component "Average character width"
+                        (lambda (stream)
+                          (let ((width (text-style-width style medium)))
+                            (draw-hdist stream (- y1 20) x1 (+ x1 width)))))
+             (component "Baseline"
+                        (lambda (stream)
+                          (draw-line* stream 0 ybase pane-width ybase)))))
           (draw-text* stream text x1 ybase :text-style style)
-          (ecase rectangle
+          (case rectangle
             ((:text-size)
              (component "Text size (width/height)"
                         (lambda (stream)

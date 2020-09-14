@@ -441,62 +441,61 @@
                                             :version :unspecific
                                             :type :wild
                              :name :wild)))
-      (values search-pathname (pathname-type actual-pathname) original-pathname))))
+      (values search-pathname original-pathname))))
 
-(defun filename-completer-get-candidates (search-pathname pathname-type original-pathname)
-  (declare (ignore pathname-type))
+(defun filename-completer-get-candidates (search-pathname original-pathname)
   (let ((orginal-is-logical-pathname (typep original-pathname 'logical-pathname))
         (completions (directory search-pathname #+sbcl :resolve-symlinks #+sbcl nil)))
     ;; Now prune out all completions that don't start with the string
     (flet ((legitimate-logical-pathname (name)
-               (let ((word (string name)))
-                 (loop for i below (length word)
-                       for ch = (schar word i)
-                       always (and (standard-char-p ch)
-                                   (or (alphanumericp ch) (char= ch #\-)))))))
-        (let ((new-completions nil))
-          (loop for pathname in completions
-                for pathname-name = (pathname-name pathname)
-                for pathname-type = (pathname-type pathname)
-                for pathname-directory = (pathname-directory pathname)
-                for pathname-host = (pathname-host original-pathname)
-                for pathname-device = (pathname-device original-pathname)
-                do (cond
-                     ;; meaning this is actually a directory
-                     ((and (null pathname-name)
-                           (null pathname-type))
-                      (when (and (loop for word in  (butlast pathname-directory)
-                                       always (legitimate-logical-pathname word))
-                                 (legitimate-logical-pathname (first (last pathname-directory))))
-                        (pushnew (if orginal-is-logical-pathname
-                                     (make-pathname :host pathname-host
-                                                    :device pathname-device
-                                                    :directory (first (last pathname-directory))
-                                                    :name nil
-                                                    :type nil)
-                                     (make-pathname :host pathname-host
-                                                    :device pathname-device
-                                                    :directory (butlast pathname-directory)
-                                                    :name (first (last pathname-directory))
-                                                    :type nil))
-                                 new-completions)))
-                     (t
-                      (when (or (not orginal-is-logical-pathname)
-                                (and (legitimate-logical-pathname pathname-name)
-                                     (legitimate-logical-pathname pathname-type)))
-                        (pushnew (make-pathname :host pathname-host
-                                                :device pathname-device
-                                                :directory (pathname-directory original-pathname)
-                                                :name pathname-name
-                                                :type pathname-type)
-                                 new-completions)))))
-          (nreverse new-completions)))))
+             (let ((word (string name)))
+               (loop for i below (length word)
+                     for ch = (schar word i)
+                     always (and (standard-char-p ch)
+                                 (or (alphanumericp ch) (char= ch #\-)))))))
+      (let ((new-completions nil))
+        (loop for pathname in completions
+              for pathname-name = (pathname-name pathname)
+              for pathname-type = (pathname-type pathname)
+              for pathname-directory = (pathname-directory pathname)
+              for pathname-host = (pathname-host original-pathname)
+              for pathname-device = (pathname-device original-pathname)
+              do (cond
+                   ;; meaning this is actually a directory
+                   ((and (null pathname-name)
+                         (null pathname-type))
+                    (when (and (loop for word in  (butlast pathname-directory)
+                                     always (legitimate-logical-pathname word))
+                               (legitimate-logical-pathname (first (last pathname-directory))))
+                      (pushnew (if orginal-is-logical-pathname
+                                   (make-pathname :host pathname-host
+                                                  :device pathname-device
+                                                  :directory (first (last pathname-directory))
+                                                  :name nil
+                                                  :type nil)
+                                   (make-pathname :host pathname-host
+                                                  :device pathname-device
+                                                  :directory (butlast pathname-directory)
+                                                  :name (first (last pathname-directory))
+                                                  :type nil))
+                               new-completions)))
+                   (t
+                    (when (or (not orginal-is-logical-pathname)
+                              (and (legitimate-logical-pathname pathname-name)
+                                   (legitimate-logical-pathname pathname-type)))
+                      (pushnew (make-pathname :host pathname-host
+                                              :device pathname-device
+                                              :directory (pathname-directory original-pathname)
+                                              :name pathname-name
+                                              :type pathname-type)
+                               new-completions)))))
+        (nreverse new-completions)))))
 
 
 (defun filename-completer (string action)
-  (multiple-value-bind (search-pathname pathname-type original-pathname)
+  (multiple-value-bind (search-pathname original-pathname)
       (filename-completer-get-directory string)
-    (let ((candidates (filename-completer-get-candidates search-pathname pathname-type original-pathname)))
+    (let ((candidates (filename-completer-get-candidates search-pathname original-pathname)))
         (complete-from-possibilities (namestring original-pathname) candidates '(#\Space)
                                      :action action
                                      :name-key #'namestring
@@ -897,10 +896,10 @@
                            :prompt nil
                            :additional-delimiter-gestures separators)
      collect element
-     do (progn
-          (when (not (eql (peek-char nil stream nil nil) separator))
+     do (let ((gesture (stream-read-gesture stream :peek-p t)))
+          (when (not (eql gesture separator))
             (loop-finish))
-          (read-char stream)
+          (stream-read-gesture stream)
           (when echo-space
             ;; Make the space a noise string
             (input-editor-format stream " ")))))
@@ -1001,10 +1000,10 @@
                       :display-default nil
                       :additional-delimiter-gestures separators))
      collect element into sequence-val
-     do (progn
-          (when (not (eql (peek-char nil stream nil nil) separator))
+     do (let ((gesture (stream-read-gesture stream :peek-p t)))
+          (when (not (eql gesture separator))
             (loop-finish))
-          (read-char stream)
+          (stream-read-gesture stream)
           (when echo-space
             ;; Make the space a noise string
             (input-editor-format stream " ")))
