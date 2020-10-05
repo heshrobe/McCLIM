@@ -110,8 +110,10 @@
 
 (define-command (com-eval-with-context :command-table inspector-command-table
                                        :name          t)
-    ((object 'inspected-object :prompt  "context object"
-                               :default (state (root-place (inspector-state))))
+    ((object 'inspected-object :prompt         "context object"
+                               :default        (state (root-place
+                                                       (inspector-state)))
+                               :insert-default t)
      (form   'clim:form))
   (with-command-error-handling ("Error evaluating form")
     (let ((result (eval-with-bindings form :object-state object)))
@@ -289,7 +291,7 @@
                           (and (supportsp object 'setf)
                                (accepts-value-p object ,value)
                                (safe-valuep object)
-                               (not (eq (value object) ,value))))
+                               (eq (value object) ,(not value))))
                  :priority 2
                  :documentation ,(format nil "Set to ~A" value-name)
                  :pointer-documentation
@@ -328,7 +330,7 @@
                                (safe-valuep object)
                                (let ((value (value object)))
                                  (and (typep value 'real)
-                                      (accepts-value-p object (1+ value))))))
+                                      (accepts-value-p object (,operator value))))))
                  :documentation ,(format nil "~@(~A~) by 1" operator-name)
                  :pointer-documentation ((object stream)
                                          (with-print-error-handling (stream)
