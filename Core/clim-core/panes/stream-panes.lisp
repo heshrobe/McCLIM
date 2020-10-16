@@ -43,15 +43,13 @@
                             sheet-multiple-child-mixin   ; needed for GADGET-OUTPUT-RECORD
                             basic-pane)
   ((redisplay-needed :initarg :display-time)
-   (scroll-bars :type scroll-bar-spec ; (member t :vertical :horizontal nil)
-                :initform nil
+   (scroll-bars :initform :obsolete
                 :initarg :scroll-bar
                 :initarg :scroll-bars
                 :accessor pane-scroll-bars)
 
                                         ; Should inherit from label-pane for this one ??
-   (label :type string
-          :initform ""
+   (label :initform :obsolete
           :initarg :label
           :reader pane-label)
    (text-margin :initarg :text-margin
@@ -79,9 +77,35 @@
    "This class implements a pane that supports the CLIM graphics,
     extended input and output, and output recording protocols."))
 
+(defmethod initialize-instance :after ((instance clim-stream-pane) &rest initargs)
+  (declare (ignore initargs))
+  (with-slots (scroll-bars label) instance
+    (when (not (eql :obsolete scroll-bars))
+      (warn "~@<The SCROLL-BARS slot in CLIM-STREAM-PANE is obsolete, ~
+             don't use it but use the keyword :SCROLL-BARS in function ~
+             MAKE-CLIM-STREAM-PANE.~@:>"))
+    (when (not (eql :obsolete label))
+      (warn "~@<The LABEL slot in CLIM-STREAM-PANE is obsolete, don't use ~
+             it but use the keyword :LABEL in function ~
+             MAKE-CLIM-STREAM-PANE.~@:>"))))
+
 (defmethod handle-event ((sheet clim-stream-pane)
                          (event window-manager-focus-event))
   (setf (port-keyboard-input-focus (port sheet)) sheet))
+
+;;; This method is defined to prevent the sheet scrolling defined for the
+;;; mouse-wheel-scroll-mixin when the event activates a command. In other
+;;; words, we scroll the clim-stream-pane only when scrolling does not match
+;;; the current input context. -- jd 2020-08-29
+(defmethod handle-event ((sheet clim-stream-pane) (event pointer-scroll-event))
+  (unless (find-innermost-applicable-presentation
+           *input-context*
+           sheet
+           (pointer-event-x event)
+           (pointer-event-y event)
+           :frame (pane-frame sheet)
+           :event event)
+    (call-next-method)))
 
 (defmethod interactive-stream-p ((stream clim-stream-pane))
   t)
@@ -261,11 +285,7 @@
   ()
   (:default-initargs :display-time nil
                      :end-of-line-action :scroll
-                     :scroll-bars :vertical
                      :incremental-redisplay t))
-
-(defmethod initialize-instance :after ((pane interactor-pane) &rest args)
-  (declare (ignore args)))
 
 ;;; KLUDGE: this is a hack to get keyboard focus (click-to-focus)
 ;;; roughly working for interactor panes.  It's a hack somewhat
@@ -285,8 +305,7 @@
 
 (defclass application-pane (clim-stream-pane)
   ()
-  (:default-initargs :display-time :command-loop
-                     :scroll-bars t))
+  (:default-initargs :display-time :command-loop))
 
 ;;; COMMAND-MENU PANE
 
@@ -294,7 +313,6 @@
   ()
   (:default-initargs :display-time :command-loop
                      :incremental-redisplay t
-                     :scroll-bars t
                      :display-function 'display-command-menu))
 
 ;;; TITLE PANE
@@ -305,7 +323,6 @@
           :accessor title-string))
   (:default-initargs :display-time t
                      :title-string "Default Title"
-                     :scroll-bars nil
                      :text-style (make-text-style :serif :bold :very-large)
                      :display-function 'display-title))
 
@@ -337,7 +354,6 @@ be shown when there is no pointer documentation to show.")
 current background message was set."))
   (:default-initargs
    :display-time nil
-   :scroll-bars nil
    :default-view +pointer-documentation-view+
    :height     '(2 :line)
    :min-height '(2 :line)
@@ -369,62 +385,104 @@ current background message was set."))
 ;;;
 ;;; CONSTRUCTORS
 ;;;
-
 (defun make-clim-stream-pane (&rest options
                               &key (type 'clim-stream-pane)
-                                (scroll-bar :vertical)
-                                (scroll-bars scroll-bar)
-                                (borders t)
+                                   label
+                                   (label-alignment nil label-alignment-p)
+                                   (display-after-commands nil display-after-commands-p)
+                                   (scroll-bar :vertical)
+                                   (scroll-bars scroll-bar)
+                                   (borders t)
                               &allow-other-keys)
-  (with-keywords-removed (options (:type :scroll-bar :scroll-bars :borders))
-    ;; The user space requirement options belong to the scroller ..
+  (when display-after-commands-p
+    (check-type display-after-commands (member nil t :no-clear))
+    (when (member :display-time options)
+      (error "MAKE-CLIM-STREAM-PANE can not be called with both
+    :DISPLAY-AFTER-COMMANDS and :DISPLAY-TIME keywords")))
+  (with-keywords-removed (options (:type :scroll-bar :scroll-bars :borders
+                                   :label :label-alignment :display-after-commands))
+    ;; If :scroll-bars isn't a cons the user space requirement options
+    ;; belong to the most external container of the stream
+    ;; (scroller-pane, label-pane or outline-pane). If :scroll-bars is
+    ;; a cons the user space requirement options belong to the clim
+    ;; stream and it is possible to set the space requirement of the
+    ;; scroller using the cdr of :scroll-bars as:
+    ;; :SCROLL-BARS '(:VERTICAL :WIDTH 300)
+    ;; -- admich 2020-10-13
     (let* ((space-keys '(:width :height :max-width :max-height
                          :min-width :min-height))
            (user-sr nil)
            (pane-options nil))
-      (loop  for (key value) on options by #'cddr
-             if (and (member key space-keys :test #'eq)
-                     (not (eq value :compute)))
-               nconc (list key value) into space-options
-             else
-               nconc (list key value) into other-options
-             end
-             finally (progn
-                       (setq user-sr space-options)
-                       (setq pane-options other-options)))
+      (loop for (key value) on options by #'cddr
+            if (and (member key space-keys :test #'eq)
+                    (not (eq value :compute)))
+              nconc (list key value) into space-options
+            else
+              nconc (list key value) into other-options
+            end
+              finally (progn
+                        (setq user-sr space-options)
+                        (setq pane-options other-options)))
       (let* ((pane (apply #'make-pane type (append pane-options
-                                                   (unless (or scroll-bars
-                                                               borders)
+                                                   (when display-after-commands-p
+                                                     (list :display-time
+                                                           (if (eq display-after-commands t)
+                                                               :command-loop
+                                                               display-after-commands)))
+                                                   (when (or (consp scroll-bars)
+                                                             (not (or scroll-bars
+                                                                      label
+                                                                      borders)))
                                                      user-sr))))
              (stream pane))
         (when scroll-bars
           (setq pane (apply #'make-pane 'scroller-pane
-                            :scroll-bar scroll-bars
                             :contents (list (make-pane 'viewport-pane
                                                        :contents (list pane)))
-                            (unless borders
-                              user-sr))))
-        (when borders
-          (setq pane (apply #'make-pane 'border-pane
-                            :border-width (if (not (numberp borders))
-                                              1
-                                              borders)
+                            (append
+                             ;; From the Franz manual if :scroll-bars is a
+                             ;; cons the car is treated as the non-cons
+                             ;; argument and the cdr is a list of keyword
+                             ;; argument pairs to be used as options of
+                             ;; the scroller-pane
+                             (if (consp scroll-bars)
+                                 `(:scroll-bar ,@scroll-bars)
+                                 `(:scroll-bar ,scroll-bars))
+                             (unless (or (consp scroll-bars) label borders)
+                               user-sr)))))
+        (when label
+          (setq pane (apply #'make-pane 'label-pane
+                            :label label
                             :contents (list pane)
-                            user-sr)))
+                            (append
+                             (when label-alignment-p
+                               (list :label-alignment label-alignment))
+                             (unless (or (consp scroll-bars) borders)
+                               user-sr)))))
+        (when borders
+          (setq pane (apply #'make-pane 'outlined-pane
+                            :thickness (if (not (numberp borders))
+                                           1
+                                           borders)
+                            :contents (list pane)
+                            (unless (consp scroll-bars)
+                              user-sr))))
         (values pane stream)))))
 
-(defun make-clim-interactor-pane (&rest options)
-  (apply #'make-clim-stream-pane :type 'interactor-pane options))
-
-(defun make-clim-application-pane (&rest options)
-  (apply #'make-clim-stream-pane :type 'application-pane options))
-
-(defun make-clim-pointer-documentation-pane (&rest options)
-  (apply #'make-clim-stream-pane :type 'pointer-documentation-pane options))
-
-(defun make-clim-command-menu-pane (&rest options)
-  (apply #'make-clim-stream-pane :type 'command-menu-pane options))
-
+(macrolet
+    ((define (name type default-scroll-bar)
+       `(defun ,name (&rest options &key (scroll-bar  nil scroll-bar-p)
+                                         (scroll-bars nil scroll-bars-p)
+                      &allow-other-keys)
+          (declare (ignore scroll-bar scroll-bars))
+          (apply #'make-clim-stream-pane :type ',type
+                 (if (or scroll-bar-p scroll-bars-p)
+                     options
+                     (list* :scroll-bars ,default-scroll-bar options))))))
+  (define make-clim-interactor-pane            interactor-pane            :vertical)
+  (define make-clim-application-pane           application-pane           t)
+  (define make-clim-pointer-documentation-pane pointer-documentation-pane nil)
+  (define make-clim-command-menu-pane          command-menu-pane          t))
 
 ;;;
 ;;; 29.4.5 Creating a Standalone CLIM Window

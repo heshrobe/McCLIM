@@ -616,6 +616,10 @@ if stuff is inserted after the insertion pointer."
 
 (defmethod stream-process-gesture ((stream drei-input-editing-mixin)
 				   gesture type)
+  ;; Drei is not interested in the pointer gestures.
+  (when (typep gesture 'pointer-event)
+    (return-from stream-process-gesture
+      (values nil 'null)))
   ;; If some other command processor has taken control, we do not want
   ;; to assume that an activation gesture really is an activation
   ;; gesture. For example, #\Newline should not cause input activation
@@ -745,10 +749,11 @@ streams. `Function' will be called with four arguments: the
 input-editing stream, the input buffer, the gesture used to
 invoke the command, and the accumulated numeric argument."
   (set-key `(,(lambda (numeric-argument)
-                      (funcall function *drei-input-editing-stream*
-                               (stream-input-buffer *drei-input-editing-stream*)
-                               gestures
-                               numeric-argument)) ,*numeric-argument-marker*)
+                (funcall function *drei-input-editing-stream*
+                         (stream-input-buffer *drei-input-editing-stream*)
+                         gestures
+                         numeric-argument))
+             ,*numeric-argument-marker*)
            'exclusive-input-editor-table
            gestures))
 

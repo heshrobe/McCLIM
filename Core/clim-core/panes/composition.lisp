@@ -1002,12 +1002,6 @@
 (defun spacing-p (pane)
   (typep pane 'spacing-pane))
 
-(defmethod initialize-instance :after ((spacing spacing-pane) &key thickness contents &allow-other-keys)
-  (declare (ignorable thickness contents))
-  (with-slots (user-width user-min-width user-max-width
-               user-height user-min-height user-max-height)
-      spacing))
-
 (defmethod compose-space ((pane spacing-pane) &key width height)
   (declare (ignore width height))
   (with-slots (border-width) pane
@@ -1725,13 +1719,18 @@ SCROLLER-PANE appear on the ergonomic left hand side, or leave set to
         ;; must be "sx0 < x < sx1 - viewport-width"  and
         ;;         "sy0 < y < sy1 - viewport-height"
         (scroll-extent sheet
-                       (max sx0 (min (- sx1 viewport-width)  (+ vx0 (* delta horizontal))))
-                       (max sy0 (min (- sy1 viewport-height) (+ vy0 (* delta vertical)))))))))
+                       (max sx0 (min (- sx1 viewport-width)
+                                     (+ vx0 (* delta horizontal))))
+                       (max sy0 (min (- sy1 viewport-height)
+                                     (+ vy0 (* delta vertical)))))))))
 
 (defmethod handle-event ((sheet mouse-wheel-scroll-mixin)
                          (event pointer-scroll-event))
-  (multiple-value-bind (viewport sheet) (find-viewport-for-scroll sheet)
-    (when viewport
-      (scroll-sheet sheet
-                    (pointer-event-delta-x event)
-                    (pointer-event-delta-y event)))))
+  (if (zerop (event-modifier-state event))
+      (multiple-value-bind (viewport sheet*)
+          (find-viewport-for-scroll sheet)
+        (when viewport
+          (scroll-sheet sheet*
+                        (pointer-event-delta-x event)
+                        (pointer-event-delta-y event))))
+      (call-next-method)))

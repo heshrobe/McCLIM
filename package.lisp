@@ -1606,7 +1606,6 @@
   ;; draw-triangle
   ;; draw-triangle*
   ;; gadget-label-text-style
-  ;; key-modifier-state-match-p
   ;; pointer-button-click-and-hold-event
   ;; pointer-button-double-click-event
   ;; pointer-port
@@ -2013,7 +2012,6 @@
    #:port-disable-sheet
    #:port-enable-sheet
    #:port-force-output
-   #:port-frame-keyboard-input-focus
    #:port-grab-pointer
    #:port-ungrab-pointer
    #:with-pointer-grabbed

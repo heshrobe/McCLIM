@@ -63,22 +63,20 @@
 (defvar *last-timestamp-lock* (make-lock))
 
 (defclass standard-event (event)
-  ((timestamp :initarg :timestamp
-              :initform nil
-              :reader event-timestamp)
+  ((timestamp :initarg :timestamp :reader event-timestamp)
    ;; This slot is pretty much required in order to call handle-event. Some
    ;; events have something other than a sheet in this slot, which is gross.
-   (sheet :initarg :sheet
-          :reader event-sheet)))
+   (sheet :initarg :sheet :reader event-sheet))
+  (:default-initargs :timestamp nil
+                     :sheet (alexandria:required-argument :sheet)))
 
 (defmethod initialize-instance :after ((event standard-event) &rest initargs)
   (declare (ignore initargs))
-  (let ((timestamp (event-timestamp event)))
-    (with-lock-held (*last-timestamp-lock*)
-      (if timestamp
-          (maxf *last-timestamp* timestamp)
-          (setf (slot-value event 'timestamp)
-                (incf *last-timestamp*))))))
+  (with-lock-held (*last-timestamp-lock*)
+    (if-let ((timestamp (event-timestamp event)))
+      (maxf *last-timestamp* timestamp)
+      (setf (slot-value event 'timestamp)
+            (incf *last-timestamp*)))))
 
 ;;; This macro automates the definition of a method on the EVENT-TYPE
 ;;; generic function.  Methods on that function should return a
@@ -102,38 +100,25 @@
          (defmethod event-type ((event ,name))
            ',type)))))
 
+;;; We have three pairs of the pointer event coordinates in different
+;;; coordinate systems:
+;;;
+;;; * (X Y) - native coordinates (the mirror)
+;;; * (SHEET-X SHEET-Y) - sheet coordinates
+;;; * (GRAFT-X GRAFT-Y) - graft coordinates (the screen)
 (define-event-class device-event (standard-event)
-  ((modifier-state :initarg :modifier-state
-                   :reader event-modifier-state)
-   (x :initarg :x
-      :reader device-event-native-x)
-   (y :initarg :y
-      :reader device-event-native-y)
-   (graft-x :initarg :graft-x
-            :reader device-event-native-graft-x)
-   (graft-y :initarg :graft-y
-            :reader device-event-native-graft-y)))
+  ((modifier-state :initarg :modifier-state :reader event-modifier-state)
+   (x :initarg :x :reader device-event-native-x)
+   (y :initarg :y :reader device-event-native-y)
+   (sheet-x :reader device-event-x)
+   (sheet-y :reader device-event-y)
+   (graft-x :initarg :graft-x :reader device-event-native-graft-x)
+   (graft-y :initarg :graft-y :reader device-event-native-graft-y)))
 
-(define-event-class keyboard-event (device-event)
-  ((key-name :initarg :key-name
-             :reader keyboard-event-key-name)
-   (key-character :initarg :key-character :reader keyboard-event-character
-                  :initform nil)))
-
-(define-event-class key-press-event (keyboard-event)
-  ())
-
-(define-event-class key-release-event (keyboard-event)
-  ())
-
-(define-event-class pointer-event (device-event)
-  ((pointer :initarg :pointer
-            :reader pointer-event-pointer)
-   (x :reader pointer-event-native-x)
-   (y :reader pointer-event-native-y)
-   (graft-x :reader pointer-event-native-graft-x)
-   (graft-y :reader pointer-event-native-graft-y) ))
-
+;;; This macro is responsible for translating the pointer coordinates into
+;;; sheet coordinates. That make sense i.e when we try to synthesize event for
+;;; a different sheet (i.e when it doesn't have a mirror), or to "detect" the
+;;; innermost sheet under the pointer (ditto).
 (defmacro get-pointer-position ((sheet event) &body body)
   (alexandria:once-only (sheet event)
     `(multiple-value-bind (x y)
@@ -146,27 +131,48 @@
        (declare (ignorable x y))
        ,@body)))
 
-(defmethod pointer-event-x ((event pointer-event))
-  (get-pointer-position ((event-sheet event) event) x))
+(defmethod initialize-instance :after ((event device-event) &key x y)
+  (if-let ((sheet (event-sheet event)))
+    (multiple-value-bind (sheet-x sheet-y)
+        (untransform-position (sheet-native-transformation sheet) x y)
+      (setf (slot-value event 'sheet-x) sheet-x
+            (slot-value event 'sheet-y) sheet-y))
+    (setf (slot-value event 'sheet-x) x
+          (slot-value event 'sheet-y) y)))
 
-(defmethod pointer-event-y ((event pointer-event))
-  (get-pointer-position ((event-sheet event) event) y))
+(define-event-class keyboard-event (device-event)
+  ((key-name :initarg :key-name
+             :reader keyboard-event-key-name)
+   (key-character :initarg :key-character :reader keyboard-event-character
+                  :initform nil)))
 
-(defgeneric pointer-event-position* (pointer-event))
+(defmethod print-object ((event keyboard-event) stream)
+  (print-unreadable-object (event stream :type t :identity nil)
+    (format stream "NAME ~s CHARACTER ~s"
+            (keyboard-event-key-name event)
+            (keyboard-event-character event))))
 
-(defmethod pointer-event-position* ((event pointer-event))
-  (get-pointer-position ((event-sheet event) event)
-    (values x y)))
+(define-event-class key-press-event (keyboard-event)
+  ())
 
-(defgeneric device-event-x (device-event))
+(define-event-class key-release-event (keyboard-event)
+  ())
 
-(defmethod device-event-x ((event device-event))
-  (get-pointer-position ((event-sheet event) event) x))
+(define-event-class pointer-event (device-event)
+  ((pointer :initarg :pointer
+            :reader pointer-event-pointer)
+   (sheet-x :reader pointer-event-x)
+   (sheet-y :reader pointer-event-y)
+   (x :reader pointer-event-native-x)
+   (y :reader pointer-event-native-y)
+   (graft-x :reader pointer-event-native-graft-x)
+   (graft-y :reader pointer-event-native-graft-y) ))
 
-(defgeneric device-event-y (device-event))
-
-(defmethod device-event-y ((event device-event))
-  (get-pointer-position ((event-sheet event) event) y))
+(defmethod print-object ((event pointer-event) stream)
+  (print-unreadable-object (event stream :type t :identity nil)
+    (format stream "~S ~S"
+            (pointer-event-x event)
+            (pointer-event-y event))))
 
 (define-event-class pointer-button-event (pointer-event)
   ((button :initarg :button
@@ -272,35 +278,6 @@
 (defconstant +super-key+             #x0800)
 (defconstant +hyper-key+             #x1000)
 (defconstant +alt-key+               #x2000)
-
-(defmacro key-modifier-state-match-p (button modifier-state &body clauses)
-  (let ((button-names '((:left       . +pointer-left-button+)
-                        (:middle     . +pointer-middle-button+)
-                        (:right      . +pointer-right-button+)
-                        (:wheel-up   . +pointer-wheel-up+)
-                        (:wheel-down . +pointer-wheel-down+)))
-        (modifier-names '((:shift . +shift-key+)
-                          (:control . +control-key+)
-                          (:meta . +meta-key+)
-                          (:super . +super-key+)
-                          (:hyper . +hyper-key+)))
-        (b (gensym))
-        (m (gensym)))
-    (labels ((do-substitutes (c)
-               (cond
-                 ((null c)
-                  nil)
-                 ((consp c)
-                  (cons (do-substitutes (car c)) (do-substitutes (cdr c))))
-                 ((assoc c button-names)
-                  (list 'check-button (cdr (assoc c button-names))))
-                 ((assoc c modifier-names)
-                  (list 'check-modifier (cdr (assoc c modifier-names))))
-                 (t
-                  c))))
-      `(flet ((check-button (,b) (= ,button ,b))
-              (check-modifier (,m) (not (zerop (logand ,m ,modifier-state)))))
-         (and ,@(do-substitutes clauses))))))
 
 ;; Key names are a symbol whose value is port-specific. Key names
 ;; corresponding to the set of standard characters (such as the
