@@ -372,13 +372,12 @@
                              (input-editing-stream-p stream)
                              (stream-scan-pointer stream))))
     (flet ((maybe-replace-input (input options)
-             (when start-position
+             (when (and start-position (getf options :echo t))
                ;; Rescan is nil in case the clicked on thing returned
                ;; something unparseable. -- heshrobe 2020-05-15
-               (when (getf options :echo t)
-                 (presentation-replace-input stream input type view
+               (presentation-replace-input stream input type view
                                              :buffer-start start-position
-                                             :rescan nil)))
+                                             :rescan nil))
              input)
            (handle-command (command)
              (if (partial-command-p command)
@@ -389,7 +388,7 @@
       (with-input-context (type)
           (object type event options)
           (if-let ((command (funcall *command-parser* command-table stream)))
-            (values (maybe-replace-input (handle-command command) nil) type)
+            (values (maybe-replace-input (handle-command command) '()) type)
             (simple-parse-error "Empty command"))
         (command
          (values (maybe-replace-input (handle-command object) options) type))))))
