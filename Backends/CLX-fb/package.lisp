@@ -43,6 +43,9 @@
                 #:clx-port-screen
                 #:clx-graft
                 #:clx-port-window
+                #:mirroring
+                #:class-gensym
+                #:maybe-add-mirroring-superclasses
                 #:sheet-xmirror
                 #:sheet-direct-xmirror)
   (:import-from #:climi
