@@ -61,6 +61,7 @@
 CLIM (Common Lisp Interface Manager) is an advanced graphical user
 interface management system."
   :depends-on ("mcclim/looks" "mcclim/extensions")
+  :components ((:file "default-icons"))
   :in-order-to ((test-op (test-op "mcclim/test"))))
 
 ;;; A system that loads the appropriate backend for the current
@@ -117,7 +118,10 @@ interface management system."
                               :components ((:file "presentation-types")
                                            (:file "presentation-functions")
                                            (:file "presentation-inheritance")
-                                           (:file "translators"))))))
+                                           (:file "translators")))
+                             (:module "frames"
+                              :depends-on ("package")
+                              :components ((:file "define-application-frame"))))))
   :perform (test-op (operation component)
              (uiop:symbol-call '#:clim-tests '#:run-tests)))
 

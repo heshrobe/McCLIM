@@ -80,10 +80,11 @@
                        (server-options-from-environment-with-localhost-fallback))
                  ,@(when mirroringp `(:mirroring ,mirroring)))))
 
-(setf (get :x11 :port-type) 'clx-port)
-(setf (get :x11 :server-path-parser) 'parse-clx-server-path)
-(setf (get :clx :port-type) 'clx-port)
-(setf (get :clx :server-path-parser) 'parse-clx-server-path)
+(defmethod find-port-type ((type (eql :x11)))
+  (find-port-type :clx))
+
+(defmethod find-port-type ((type (eql :clx)))
+  (values 'clx-port 'parse-clx-server-path))
 
 (defmethod initialize-instance :after ((port clx-port) &key)
   (let ((options (cdr (port-server-path port))))
@@ -183,10 +184,13 @@
          (name (clime:sheet-name sheet))
          (instance-name (string-downcase name))
          (class-name (string-capitalize name))
-         (pretty-name (clime:sheet-pretty-name sheet)))
+         (pretty-name (clime:sheet-pretty-name sheet))
+         (icon (clime:sheet-icon sheet)))
     (xlib:set-wm-class window instance-name class-name)
     (%set-window-name window pretty-name)
     (%set-window-icon-name window pretty-name)
+    (when icon
+      (port-set-mirror-icon port window icon))
     (setf (xlib:wm-hints window) (xlib:make-wm-hints :input :on))
     (setf (xlib:wm-protocols window) `(:wm_take_focus :wm_delete_window))
     (xlib:change-property window

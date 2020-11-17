@@ -18,17 +18,17 @@
              :label title
              :activate-callback
              (let ((frame nil))
-               (lambda (&rest ignore)
-                 (declare (ignore ignore))
-                 (cond ((null frame)    ;; I broke this logic, sorry.. -Hefner
-                        (setq frame
-                          (run-frame-top-level
-                           (make-application-frame
-                            demo-frame-class
-                            :calling-frame *application-frame*))))
-                       (t
-                        #+nil
-                        (destroy-frame frame)))))))
+               (lambda (gadget)
+                 (let ((calling-frame (gadget-client gadget)))
+                   (cond ((null frame) ; I broke this logic, sorry.. -Hefner
+                          (setq frame
+                                (run-frame-top-level
+                                 (make-application-frame
+                                  demo-frame-class
+                                  :calling-frame calling-frame))))
+                         (t
+                          #+nil
+                          (destroy-frame frame))))))))
 
 (defun run-demo (name &key background)
   "Coerces `name' into symbol in package `clim-demo' and runs application
@@ -72,10 +72,10 @@ name."))
             (make-demo-button "Draggable Graph" 'draggable-graph-demo)
             (make-pane 'push-button :label "Font Selector"
                                     :activate-callback
-                                    (lambda (&rest ignore)
-                                      (declare (ignore ignore))
-                                      (format *trace-output* "~&You chose: ~A~%"
-                                              (select-font))))
+                                    (lambda (gadget)
+                                      (let ((frame (gadget-client gadget)))
+                                        (format *trace-output* "~&You chose: ~A~%"
+                                                (select-font :calling-frame frame)))))
             (make-demo-button "Tab Layout" 'clim-demo.tabdemo:tabdemo)
             (make-demo-button "Summation" 'summation)
             (make-demo-button "German Towns" 'clim-demo.town-example:town-example)
@@ -102,7 +102,7 @@ name."))
             (make-demo-button "Render Image Tests" 'render-image-tests)
             (make-demo-button "Drawing Tests" 'clim-demo.drawing-tests:drawing-tests)
             (make-demo-button "Accepting Values Test"  'av-test)
-            (make-demo-button "Frame and Sheet Names Test" 'clim-demo.names-and-icons:frame-sheet-name-test)
+            (make-demo-button "Frame Icon and Name Test" 'clim-demo.names-and-icons:frame-sheet-name-test)
             (make-demo-button "Tracking Pointer test" 'tracking-pointer-test)))
         (labelling (:label "Regression Tests")
           (vertically (:equalize-width t)
