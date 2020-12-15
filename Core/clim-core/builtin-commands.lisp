@@ -78,7 +78,7 @@
      :gesture :describe-presentation
      :tester ((object presentation)
               (declare (ignore object))
-              (not (eq presentation *null-presentation*)))
+              (not (presentation-subtypep (presentation-type presentation) 'blank-area)))
      :documentation "Describe Presentation"
      :pointer-documentation "Describe Presentation"
      :menu presentation-debugging)
@@ -123,10 +123,6 @@
                      :stream stream
                      :sensitive nil)))))
   (object presentation)
-  ;; returning (PRESENTATION-TYPE PRESENTATION) as the ptype is
-  ;; formally undefined, as this means that the translator returns a
-  ;; presentation type which is not PRESENTATION-SUBTYPEP the
-  ;; translator's TO-TYPE.
   (values object (presentation-type presentation)))
 
 (define-presentation-action presentation-menu
@@ -148,7 +144,9 @@
                           frame window x y
                           :for-menu t
                           :label (format nil "Operation on ~A"
-                                         (presentation-type presentation))))
+                                         (with-output-to-string (stream)
+                                           (describe-presentation-type
+                                            (presentation-type presentation) stream 1)))))
 
 ;;; Action for possibilities menu of complete-input
 ;;;

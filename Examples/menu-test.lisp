@@ -51,6 +51,11 @@
   (format *standard-output* "You pressed the Hi button.~%")
   (finish-output *standard-output*))
 
+(define-menu-test-command (com-more :name t)
+    ((a 'string :prompt "String"))
+  (format *standard-output* "You accepted ~s.~%" a)
+  (finish-output *standard-output*))
+
 (make-command-table 'kenobi-command-table
                     :errorp nil
                     :menu '(("General Kenobi"   :command com-kenobi
@@ -63,9 +68,26 @@
 (make-command-table 'buffer-command-table
                     :errorp nil
                     :menu '(("Hello there" :menu kenobi-command-table)
-                            ("Hi there"    :command com-hi)))
+                            ("Hi there"    :command com-hi)
+                            ("Disabled"    :command com-disabled)))
 
-(make-command-table 'menubar-command-table
-                    :errorp nil
-                    :menu '(("Buffer" :menu buffer-command-table)
-                            ("File"   :command com-file)))
+(defun get-kenobi (gesture numeric)
+  (declare (ignore gesture numeric))
+  '(com-kenobi))
+
+(define-command-table menubar-command-table
+  :menu (("Buffer" :menu buffer-command-table)
+         ("File"   :command com-file)
+         ;; horizontal divider
+         ("divider" :divider nil)
+         ;; literal submenu (McCLIM extension)
+         ("About"   :menu (("McCLIM"
+                            :menu (("super!" :divider nil)
+                                   ("kenobi" :command (com-kenobi))
+                                   ("extra!" :divider nil
+                                             :text-style (nil :bold nil))
+                                   ("kenobi" :function get-kenobi)))
+                           ("Lisp"
+                            :menu (("More" :command com-more)
+                                   (nil :divider nil)
+                                   ("empty"  :menu nil)))))))

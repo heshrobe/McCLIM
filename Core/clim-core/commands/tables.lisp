@@ -119,8 +119,9 @@
                                           (menu nil menu-supplied-p)
                                           inherit-menu)
   `(if-let ((old-table (gethash ',name *command-tables* nil)))
-     (with-slots (inherit-from menu) old-table
-       (setq inherit-from ',inherit-from)
+     (with-slots (inherit-from inherit-menu menu) old-table
+       (setq inherit-from ',inherit-from
+             inherit-menu ',inherit-menu)
        ,(when menu-supplied-p
           `(setq menu (menu-items-from-list ',menu)))
        old-table)
@@ -149,10 +150,8 @@
           (map-func command-table)))))
 
 (defun command-present-in-command-table-p (command-name command-table)
-  (let ((table (find-command-table command-table)))
-    (if (gethash command-name (slot-value table 'commands))
-        table
-        nil)))
+  (let ((ht (slot-value (find-command-table command-table) 'commands)))
+    (nth-value 1 (gethash command-name ht))))
 
 (defun command-accessible-in-command-table-p (command-name command-table)
   (or (command-present-in-command-table-p command-name command-table)
@@ -242,16 +241,17 @@ designator) inherits menu items."
                           :key #'command-menu-item-name
                           :test #'equal)))))))
 
-(defun partial-command-from-name (command-name command-table)
-  (let ((parser (gethash command-name *command-parser-table*)))
-    (if (null parser)
-        (error 'command-not-present :command-table-name
-               (command-table-designator-as-name command-table))
-        (cons command-name
-              (mapcar #'(lambda (foo)
-                          (declare (ignore foo))
-                          *unsupplied-argument-marker*)
-                      (required-args parser))))))
+(defun partial-command-from-name
+    (command-name command-table &optional (errorp t))
+  (if-let ((parser (gethash command-name *command-parser-table*)))
+    (cons command-name
+          (mapcar #'(lambda (foo)
+                      (declare (ignore foo))
+                      *unsupplied-argument-marker*)
+                  (required-args parser)))
+    (when errorp
+      (error 'command-not-present :command-table-name
+             (command-table-designator-as-name command-table)))))
 
 
 ;;; Command table item accessors.
@@ -335,8 +335,7 @@ designator) inherits menu items."
 (defun map-over-command-table-menu (function table &key (inherited t))
   (setf table (find-command-table table))
   (mapc #'(lambda (item)
-            (with-slots (menu-name keystroke type) item
-              (funcall function item table)))
+            (funcall function item table))
         (slot-value table 'menu))
   (when inherited
     (dolist (sub-table (command-table-inherit-from table))

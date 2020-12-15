@@ -778,6 +778,8 @@ unspecified. "))
 (defgeneric (setf presentation-single-box) (single-box presentation))
 (defgeneric presentation-modifier (presentation))
 
+(declfun make-blank-area-presentation (sheet x y event))
+
 ;;; 23.4 Typed output
 
 (defgeneric stream-present
@@ -1055,6 +1057,7 @@ panes."))
 (defgeneric default-frame-top-level
     (frame &key command-parser command-unparser partial-command-parser prompt))
 (defgeneric read-frame-command (frame &key stream))
+(defgeneric execute-frame-command (frame command))
 (defgeneric run-frame-top-level (frame &key &allow-other-keys))
 (defgeneric command-enabled (command-name frame))
 (defgeneric (setf command-enabled) (enabled command-name frame))

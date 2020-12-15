@@ -74,8 +74,10 @@
 (defun menu-items-from-list (menu)
   (mapcar
    #'(lambda (item)
-       (destructuring-bind (name type value &rest args) item
-         (apply #'make-menu-item name type value args)))
+       (if (atom item)
+           item
+           (destructuring-bind (name type value &rest args) item
+             (apply #'make-menu-item name type value args))))
    menu))
 
 (defun make-menu-item (name type value
@@ -101,7 +103,8 @@
      ;; sub-menus.
      (check-type value (or command-table symbol cons))
      (when (listp value)
-       (setf value (menu-items-from-list value))))
+       (let ((items (menu-items-from-list value)))
+         (setf value (make-command-table nil :menu items)))))
     (:divider
      ;; The value of a divider is ignored.
      ))
@@ -117,6 +120,15 @@
                  :text-style text-style
                  :command-name command-name
                  :command-line-name command-line-name))
+
+(defun extract-menu-item-command
+    (menu-item gesture &optional numeric-argument)
+  (check-type menu-item %menu-item)
+  (let ((type (command-menu-item-type menu-item))
+        (value (command-menu-item-value menu-item)))
+    (ecase type
+      (:function (funcall value gesture numeric-argument))
+      (:command value))))
 
 (defun command-name (command)
   (first command))
