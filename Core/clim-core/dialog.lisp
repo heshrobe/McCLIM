@@ -720,7 +720,7 @@ is run for the last time"))
      :pointer-documentation "Select field for input"
      :echo nil
      :tester ((object)
-              (let ((selected (selected-query *accepting-values-stream*)))
+              (let ((selected (and *accepting-values-stream* (selected-query *accepting-values-stream*))))
                 (or (null selected)
                     (not (eq (query-identifier selected) object))))))
   (object)
